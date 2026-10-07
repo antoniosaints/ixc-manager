@@ -11,6 +11,7 @@ import {
   RefreshCw,
   ChevronLeft,
   RotateCcw,
+  AlertTriangle,
 } from "lucide-vue-next";
 import { useRetentionStore } from "../stores/retention";
 import ChurnCustomerTable from "../components/ChurnCustomerTable.vue";
@@ -49,18 +50,54 @@ const clearFilters = () => {
 };
 const totalPages = computed(() => Math.max(1, Math.ceil(store.total / limit.value)));
 const cards = computed(() => [
-  { label: "Ativos", value: store.summary.activeCustomers ?? 0, icon: Users, color: "text-cyan-600 bg-cyan-50" },
-  { label: "Críticos", value: store.summary.critical ?? 0, icon: Siren, color: "text-red-600 bg-red-50" },
-  { label: "Risco alto", value: store.summary.highRisk ?? 0, icon: ShieldAlert, color: "text-orange-600 bg-orange-50" },
-  { label: "Bloqueados", value: store.summary.blocked ?? 0, icon: LockKeyhole, color: "text-violet-600 bg-violet-50" },
+  {
+    label: "Ativos",
+    value: store.summary.activeCustomers,
+    description: "Cadastros de clientes ativos no IXC, mesmo sem score.",
+    icon: Users,
+    color: "text-cyan-600 bg-cyan-50",
+  },
+  {
+    label: "Críticos",
+    value: store.summary.critical,
+    description: "Clientes críticos pelo último score ou marcação manual.",
+    icon: Siren,
+    color: "text-red-600 bg-red-50",
+  },
+  {
+    label: "Risco alto",
+    value: store.summary.highRisk,
+    description: "Contratos com risco alto na última análise.",
+    icon: ShieldAlert,
+    color: "text-orange-600 bg-orange-50",
+  },
+  {
+    label: "Bloqueados",
+    value: store.summary.blocked,
+    description: "Clientes ativos com contrato ativo bloqueado automática ou manualmente. Cada cliente é contado uma vez.",
+    icon: LockKeyhole,
+    color: "text-violet-600 bg-violet-50",
+  },
   {
     label: "Cancelamentos / mês",
-    value: store.summary.cancellationsThisMonth ?? 0,
+    value: store.summary.cancellationsThisMonth,
+    description: "Contratos cancelados no IXC do início do mês até hoje, incluindo cadastros inativos.",
     icon: UserMinus,
     color: "text-slate-700 bg-slate-100",
   },
 ]);
-const load = (resetPage = false) => {
+const summaryWarnings = computed(() => [
+  ...(store.summary.warnings ?? []),
+  ...(store.summaryError ? [store.summaryError + " Os indicadores exibidos não foram atualizados."] : []),
+]);
+const timestamp = (value?: string | null) => {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? ""
+    : date.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+};
+const load = (resetPage = false, refreshSummary = false) => {
   if (resetPage) page.value = 1;
   localStorage.setItem(
     filterStorageKey,
@@ -83,8 +120,9 @@ const load = (resetPage = false) => {
   q.set("workflowStatus", workflowStatus.value);
   q.set("page", String(page.value));
   q.set("limit", String(limit.value));
-  return store.loadDashboard(q);
+  return store.loadDashboard(q, refreshSummary);
 };
+const refresh = () => load(false, true);
 const changePage = (next: number) => {
   page.value = Math.min(Math.max(1, next), totalPages.value);
   load();
@@ -94,14 +132,14 @@ const toggleAttention = async (customer: { customer_id: number; contract_id: num
   try {
     await api.updateCustomerAttention(customer.customer_id, customer.contract_id, !customer.attention_critical);
     toast.success(customer.attention_critical ? "Atenção crítica removida" : "Cliente marcado como crítico");
-    await load();
+    await refresh();
   } catch (error) {
     toast.error("Falha ao atualizar atenção", error instanceof Error ? error.message : "Tente novamente.");
   } finally {
     attentionSaving.value = null;
   }
 };
-onMounted(load);
+onMounted(refresh);
 </script>
 <template>
   <div class="compact-view">
@@ -113,12 +151,21 @@ onMounted(load);
         </h1>
         <p class="mt-1 text-xs text-slate-500">Score explicável: financeiro, suporte, conexão, contrato e satisfação.</p>
       </div>
-      <button type="button" @click="load()" class="button-secondary" :disabled="store.loading">
+      <button type="button" @click="refresh()" class="button-secondary" :disabled="store.loading || store.summaryLoading">
         <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" focusable="false" />Atualizar painel
       </button>
     </section>
-    <section class="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5" aria-label="Resumo do Churn">
-      <article v-for="card in cards" :key="card.label" class="panel flex items-center gap-2 rounded-xl px-3 py-2.5">
+    <section
+      class="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5"
+      aria-label="Resumo do Churn"
+      :aria-busy="store.summaryLoading"
+    >
+      <article
+        v-for="card in cards"
+        :key="card.label"
+        :title="card.description"
+        class="panel flex items-center gap-2 rounded-xl px-3 py-2.5"
+      >
         <component
           :is="card.icon"
           class="hidden h-7 w-7 shrink-0 rounded-lg p-1.5 sm:block"
@@ -126,9 +173,41 @@ onMounted(load);
           aria-hidden="true"
           focusable="false"
         /><span class="min-w-0 flex-1 text-[11px] font-medium text-slate-500">{{ card.label }}</span
-        ><strong class="text-xl">{{ Number(card.value).toLocaleString("pt-BR") }}</strong>
+        ><strong class="text-xl">{{ card.value == null ? "—" : card.value.toLocaleString("pt-BR") }}</strong>
       </article>
     </section>
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
+      <p>
+        <template v-if="store.summary.operationalSource === 'database'"
+          >Ativos, bloqueados e cancelamentos: consulta ao IXC · {{ timestamp(store.summary.operationalQueriedAt) }} (Brasília).</template
+        >
+        <template v-else-if="store.summary.operationalSource === 'synchronized'"
+          >Ativos, bloqueados e cancelamentos: última sincronização.</template
+        >
+        <template v-if="store.summary.riskCalculatedAt"> Risco: último score em {{ timestamp(store.summary.riskCalculatedAt) }}.</template>
+        <template v-else-if="store.summary.riskSource === 'synchronized'"> Nenhum score calculado.</template>
+      </p>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1 text-cyan-700"
+        :disabled="store.summaryLoading"
+        @click="store.loadSummary()"
+      >
+        <RefreshCw class="h-3 w-3" :class="{ 'animate-spin': store.summaryLoading }" aria-hidden="true" />{{
+          store.summaryLoading ? "Consultando indicadores…" : "Atualizar indicadores"
+        }}
+      </button>
+    </div>
+    <div
+      v-if="summaryWarnings.length"
+      role="status"
+      class="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800"
+    >
+      <AlertTriangle class="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <div>
+        <p v-for="warning in summaryWarnings" :key="warning">{{ warning }}</p>
+      </div>
+    </div>
     <section class="panel overflow-hidden">
       <div class="relative border-b border-slate-100 px-4 py-3">
         <div class="mb-3 flex flex-wrap items-center gap-2">

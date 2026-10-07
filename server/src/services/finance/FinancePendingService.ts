@@ -4,6 +4,7 @@ import { IxcReadDatabase, type IxcReadSession, type IxcReadQuery } from "../../i
 import { financialScope } from "../../integrations/ixc/database/dashboardQueries.js";
 import { decimalToUnits, mapDate } from "../../integrations/ixc/database/maps/valueMappers.js";
 import { addDays, referenceDate } from "../upgrades/UpgradeService.js";
+import { receivableEligibility } from "../../integrations/ixc/database/receivableEligibility.js";
 
 export const pendingQuery = z
   .object({
@@ -12,6 +13,7 @@ export const pendingQuery = z
     branchId: z.coerce.number().int().positive().optional(),
     accountId: z.coerce.number().int().positive().optional(),
     regime: z.enum(["all", "cash", "competence", "manual"]).optional(),
+    receivableScope: z.enum(["active", "all"]).default("active"),
     kind: z.enum(["receivable", "payable"]).default("receivable"),
     scope: z.enum(["aging", "period", "overdue"]).default("aging"),
     bucket: z.enum(["all", "1-30", "31-60", "61-90", "91+"]).default("all"),
@@ -42,8 +44,10 @@ interface TitleRow {
   id: string;
   partyId: number | null;
   partyName: string | null;
+  partyActive: string | null;
   contractId: number | null;
   contractName: string | null;
+  contractStatus: string | null;
   accountId: number | null;
   accountName: string | null;
   branchId: number | null;
@@ -72,6 +76,7 @@ export function pendingSql(input: PendingQuery, today: string) {
   let where = "t.status IN ('A','P') AND COALESCE(t.estornado,'') IN ('','N') AND t.valor_aberto>0";
   const params: (string | number | null)[] = [];
   if (receiving) where += " AND COALESCE(t.titulo_renegociado,'') IN ('','N')";
+  if (receiving) where += receivableEligibility(query.receivableScope);
   where += " AND t.data_vencimento>='1000-01-01'";
   if (query.scope === "aging") {
     const bounds: Record<string, [number, number | null]> = { "1-30": [1, 30], "31-60": [31, 60], "61-90": [61, 90], "91+": [91, null] };
@@ -116,8 +121,8 @@ export function pendingSql(input: PendingQuery, today: string) {
   const details: IxcReadQuery = {
     name: "pending-titles",
     timeoutSeconds: 5,
-    sql: `SELECT t.id,t.${partyField} partyId,c.razao partyName,
- ${receiving ? "t.id_contrato contractId,cc.contrato contractName" : "NULL contractId,NULL contractName"},t.id_conta accountId,a.planejamento_analitico accountName,
+    sql: `SELECT t.id,t.${partyField} partyId,c.razao partyName,${receiving ? "c.ativo" : "NULL"} partyActive,
+ ${receiving ? "t.id_contrato contractId,cc.contrato contractName,cc.status contractStatus" : "NULL contractId,NULL contractName,NULL contractStatus"},t.id_conta accountId,a.planejamento_analitico accountName,
  t.filial_id branchId,t.documento document,t.data_vencimento dueDate,t.data_emissao issuedDate,t.valor amount,
  t.${receiving ? "valor_recebido" : "valor_pago"} paid,t.valor_aberto balance,t.status,DATEDIFF(?,t.data_vencimento) daysLate
  FROM ${table} t LEFT JOIN ${party} c ON c.id=t.${partyField}
@@ -169,8 +174,10 @@ export class FinancePendingService {
         items: rows.map((row) => ({
           partyId: row.partyId,
           partyName: row.partyName,
+          partyActive: row.partyActive ?? null,
           contractId: row.contractId,
           contractName: row.contractName,
+          contractStatus: row.contractStatus ?? null,
           accountId: row.accountId,
           accountName: row.accountName,
           branchId: row.branchId,
@@ -191,6 +198,7 @@ export class FinancePendingService {
         kind: query.kind,
         scope: query.scope,
         bucket: query.bucket,
+        receivableScope: query.receivableScope,
         asOf: today,
         queriedAt: this.now().toISOString(),
       };

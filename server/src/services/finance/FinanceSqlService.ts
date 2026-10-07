@@ -276,6 +276,7 @@ export class FinanceSqlService {
     const result = {
       source: "ixc-database" as const,
       regime: query.regime ?? "all",
+      receivableScope: query.receivableScope ?? "active",
       durationMs: Math.round(performance.now() - started),
       period: { from: query.from, to: query.to },
       previous: {

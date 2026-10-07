@@ -68,6 +68,17 @@ export const ixcRelations = [
   relation("cliente_contrato", "id_vd_contrato", "vd_contratos", "id", "foreign-key", "Plano comercial"),
   relation("cliente_contrato_historico", "id_contrato", "cliente_contrato", "id", "inferred", "Histórico do contrato"),
   relation("radusuarios", "id_cliente", "cliente", "id", "foreign-key", "Logins do cliente"),
+  relation("radusuarios", "id_caixa_ftth", "rad_caixa_ftth", "id", "inferred", "Caixa de atendimento vinculada ao login"),
+  relation(
+    "radpop_radio_cliente_fibra",
+    "id_login",
+    "radusuarios",
+    "id",
+    "period-validated",
+    "Sinal óptico da ONU; validar contrato compatível e tratar vínculos duplicados, conferido em 07/10/2026"
+  ),
+  relation("rad_caixa_ftth", "id_transmissor", "radpop_radio", "id", "inferred", "Transmissor da caixa; selecionar somente identificação"),
+  relation("rad_caixa_ftth", "id_cidade", "cidade", "id", "inferred", "Cidade da caixa de atendimento"),
   relation("radusuarios", "id_contrato", "cliente_contrato", "id", "inferred", "Logins do contrato"),
   relation("radusuarios_consumo_m", "id_login", "radusuarios", "id", "foreign-key", "Consumo mensal por login"),
   relation("su_ticket", "id_cliente", "cliente", "id", "inferred", "Atendimentos; su_status difere do status de fluxo"),

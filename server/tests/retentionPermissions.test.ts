@@ -12,6 +12,8 @@ import { AuthService } from "../src/services/AuthService.js";
 import { RetentionRepository } from "../src/repositories/RetentionRepository.js";
 import { db } from "../src/repositories/database.js";
 import { enqueueFullSync, retentionQueue } from "../src/queues/retentionQueue.js";
+import { IxcReadDatabase } from "../src/integrations/ixc/database/IxcReadDatabase.js";
+import { RetentionSummaryService } from "../src/services/retention/RetentionSummaryService.js";
 afterEach(() => vi.restoreAllMocks());
 it("nega todas as ações de Churn sem permissão antes de acessar dados ou filas", async () => {
   vi.spyOn(AuthService.prototype, "authenticate").mockResolvedValue({
@@ -23,7 +25,8 @@ it("nega todas as ações de Churn sem permissão antes de acessar dados ou fila
   });
   const query = vi.spyOn(db, "query"),
     execute = vi.spyOn(db, "execute"),
-    summary = vi.spyOn(RetentionRepository.prototype, "getSummary");
+    summary = vi.spyOn(RetentionRepository.prototype, "getSummary"),
+    ixc = vi.spyOn(IxcReadDatabase.prototype, "select");
   const app = Fastify();
   await app.register(retentionRoutes, { prefix: "/api/retention" });
   try {
@@ -52,6 +55,32 @@ it("nega todas as ações de Churn sem permissão antes de acessar dados ou fila
     expect(query).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
     expect(summary).not.toHaveBeenCalled();
+    expect(ixc).not.toHaveBeenCalled();
+    expect(enqueueFullSync).not.toHaveBeenCalled();
+    expect(retentionQueue.add).not.toHaveBeenCalled();
+  } finally {
+    await app.close();
+  }
+});
+it("o resumo permitido mantém a rota sem cache e não dispara análise nem sincronização", async () => {
+  vi.spyOn(AuthService.prototype, "authenticate").mockResolvedValue({
+    id: 2,
+    name: "Teste",
+    email: "test@example.test",
+    role: "USER",
+    permissions: ["churn.dashboard"],
+  });
+  const summary = vi
+    .spyOn(RetentionSummaryService.prototype, "getSummary")
+    .mockResolvedValue({ activeCustomers: 12, operationalSource: "database", warnings: [] } as any);
+  const app = Fastify();
+  await app.register(retentionRoutes, { prefix: "/api/retention" });
+  try {
+    const response = await app.inject({ url: "/api/retention/summary" });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.json()).toMatchObject({ activeCustomers: 12, operationalSource: "database" });
+    expect(summary).toHaveBeenCalledOnce();
     expect(enqueueFullSync).not.toHaveBeenCalled();
     expect(retentionQueue.add).not.toHaveBeenCalled();
   } finally {

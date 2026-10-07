@@ -7,6 +7,9 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     proxy: {
+      // Preserve the browser-facing Host for the backend's same-origin
+      // WebSocket check. Rewriting it to :3000 rejects frontend origins.
+      "/api/network/live": { target: "http://127.0.0.1:3000", changeOrigin: false, ws: true },
       // SQL financial reads have individual server deadlines and can include
       // historical balances. Keep this rule before the general /api rule.
       "/api/finance": { target: "http://127.0.0.1:3000", changeOrigin: true, timeout: 90_000, proxyTimeout: 75_000 },

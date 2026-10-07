@@ -1,0 +1,97 @@
+{
+  "validatedAt": "2026-10-07T17:30:28.048Z",
+  "referenceDate": "2026-10-07",
+  "timeZone": "America/Sao_Paulo",
+  "ixcReadOnly": true,
+  "customerDetailsRecorded": false,
+  "financialValuesRecorded": false,
+  "defaultReceivableScope": "active",
+  "comparisonInSameSnapshot": true,
+  "matches": [
+    {
+      "receivableScope": "active",
+      "scope": "aging",
+      "independentEquals": true,
+      "agingEquals": true,
+      "durationMs": 2014
+    },
+    {
+      "receivableScope": "active",
+      "bucket": "1-30",
+      "scope": "aging",
+      "agingEquals": true
+    },
+    {
+      "receivableScope": "active",
+      "bucket": "31-60",
+      "scope": "aging",
+      "agingEquals": true
+    },
+    {
+      "receivableScope": "active",
+      "bucket": "61-90",
+      "scope": "aging",
+      "agingEquals": true
+    },
+    {
+      "receivableScope": "active",
+      "bucket": "91+",
+      "scope": "aging",
+      "agingEquals": true
+    },
+    {
+      "receivableScope": "active",
+      "scope": "period",
+      "receivableEquals": true
+    },
+    {
+      "receivableScope": "all",
+      "scope": "aging",
+      "independentEquals": true,
+      "agingEquals": true,
+      "durationMs": 640
+    },
+    {
+      "receivableScope": "all",
+      "bucket": "1-30",
+      "scope": "aging",
+      "agingEquals": true
+    },
+    {
+      "receivableScope": "all",
+      "bucket": "31-60",
+      "scope": "aging",
+      "agingEquals": true
+    },
+    {
+      "receivableScope": "all",
+      "bucket": "61-90",
+      "scope": "aging",
+      "agingEquals": true
+    },
+    {
+      "receivableScope": "all",
+      "bucket": "91+",
+      "scope": "aging",
+      "agingEquals": true
+    },
+    {
+      "receivableScope": "all",
+      "scope": "period",
+      "receivableEquals": true
+    }
+  ],
+  "referenceCustomer515": {
+    "inactive": true,
+    "excludedByDefault": true,
+    "visibleInAll": true,
+    "allTitlesWithoutActiveContract": true
+  },
+  "specificTitleBranchAndAccountMatches": true,
+  "indexesUsed": [
+    "t.status",
+    "eligible_customer.PRIMARY",
+    "eligible_contract.PRIMARY"
+  ],
+  "indexesCreated": false
+}

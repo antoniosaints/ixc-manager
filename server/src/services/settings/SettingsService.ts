@@ -13,8 +13,11 @@ export const paletteSchema = z.object({
   primary: color,
   churn: color,
   upgrades: color,
+  collections: color.default("#c2410c"),
+  network: color.default("#0284c7"),
 });
 export const defaultAppearance = {
+  typography: { font: "inter" as "inter" | "sora" | "roboto" | "poppins", size: 16, minWeight: 400 },
   mode: "light" as "light" | "dark" | "system",
   logo: "/cas-logo.png",
   favicon: "/cas-logo.png",
@@ -28,6 +31,8 @@ export const defaultAppearance = {
     primary: "#2563eb",
     churn: "#0891b2",
     upgrades: "#7c3aed",
+    collections: "#c2410c",
+    network: "#0284c7",
   },
   dark: {
     background: "#0b1120",
@@ -39,6 +44,8 @@ export const defaultAppearance = {
     primary: "#60a5fa",
     churn: "#22d3ee",
     upgrades: "#a78bfa",
+    collections: "#fb923c",
+    network: "#38bdf8",
   },
 };
 export function contrast(first: string, second: string) {
@@ -65,8 +72,22 @@ export function validImage(value: string) {
       : bytes.subarray(0, 4).toString() === "RIFF" && bytes.subarray(8, 12).toString() === "WEBP";
 }
 const image = z.string().max(350_000).refine(validImage, "Use uma imagem PNG, JPEG ou WebP de até 256 KB.");
+export const typographySchema = z
+  .object({
+    font: z.enum(["inter", "sora", "roboto", "poppins"]).default("inter"),
+    size: z.number().int().min(14).max(20).default(16),
+    minWeight: z.union([z.literal(400), z.literal(500), z.literal(600), z.literal(700)]).default(400),
+  })
+  .default({ font: "inter", size: 16, minWeight: 400 });
 const appearanceObjectSchema = z
-  .object({ mode: z.enum(["light", "dark", "system"]), logo: image, favicon: image, light: paletteSchema, dark: paletteSchema })
+  .object({
+    mode: z.enum(["light", "dark", "system"]),
+    logo: image,
+    favicon: image,
+    typography: typographySchema,
+    light: paletteSchema,
+    dark: paletteSchema,
+  })
   .superRefine((value, ctx) => {
     for (const mode of ["light", "dark"] as const) {
       const palette = value[mode];
@@ -86,9 +107,14 @@ export const appearanceSchema = z.preprocess((value) => {
   const appearance = { ...(value as Record<string, unknown>) };
   for (const mode of ["light", "dark"] as const) {
     const palette = appearance[mode];
+    if (palette && typeof palette === "object" && !Array.isArray(palette) && !("network" in palette))
+      appearance[mode] = { ...palette, network: defaultAppearance[mode].network };
+    if (palette && typeof palette === "object" && !Array.isArray(palette) && !("collections" in palette)) {
+      appearance[mode] = { ...(appearance[mode] as object), collections: defaultAppearance[mode].collections };
+    }
     if (palette && typeof palette === "object" && !Array.isArray(palette) && !("churn" in palette)) {
       const legacy = palette as Record<string, unknown>;
-      appearance[mode] = { ...legacy, churn: legacy.primary, primary: defaultAppearance[mode].primary };
+      appearance[mode] = { ...(appearance[mode] as object), churn: legacy.primary, primary: defaultAppearance[mode].primary };
     }
   }
   return appearance;

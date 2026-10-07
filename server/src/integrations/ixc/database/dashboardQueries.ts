@@ -1,6 +1,7 @@
 import { financeQuery, comparisonPeriod, type FinanceQuery } from "../../../services/finance/FinanceService.js";
 import { addDays } from "../../../services/upgrades/UpgradeService.js";
 import type { IxcReadQuery } from "./IxcReadDatabase.js";
+import { receivableEligibility } from "./receivableEligibility.js";
 
 export function financialScope(query: FinanceQuery, alias = "t", regimeField = `${alias}.previsao`) {
   const code = query.regime === "cash" ? "S" : query.regime === "competence" ? "N" : query.regime === "manual" ? "M" : undefined;
@@ -46,7 +47,7 @@ export function dashboardTitles(source: "receivable" | "payable", input: Finance
       SUM(t.valor_aberto>0) openCount,
       SUM(CASE WHEN t.valor_aberto>0 THEN t.valor_aberto ELSE 0 END) openBalance,
       SUM(CASE WHEN t.valor_aberto>0 AND t.data_vencimento<? THEN t.valor_aberto ELSE 0 END) overdueBalance
-      FROM ${table} t WHERE t.data_vencimento>=? AND t.data_vencimento<?${filter.sql}
+      FROM ${table} t WHERE t.data_vencimento>=? AND t.data_vencimento<?${filter.sql}${source === "receivable" ? receivableEligibility(query.receivableScope) : ""}
       GROUP BY t.status,t.estornado${source === "receivable" ? ",t.titulo_renegociado" : ""}`,
     params: [today, query.from, addDays(query.to, 1), ...filter.params],
   };
@@ -66,7 +67,7 @@ export function dashboardAging(input: FinanceQuery, today: string): IxcReadQuery
       SUM(t.valor_aberto>0) openCount,
       SUM(CASE WHEN t.valor_aberto>0 THEN t.valor_aberto ELSE 0 END) openBalance
       FROM fn_areceber t WHERE t.data_vencimento<? AND t.status IN ('A','P')
-      AND COALESCE(t.estornado,'') IN ('','N')${filter.sql}
+      AND COALESCE(t.estornado,'') IN ('','N')${filter.sql}${receivableEligibility(query.receivableScope)}
       GROUP BY bucket,t.titulo_renegociado`,
     params: [today, today, today, today, ...filter.params],
   };

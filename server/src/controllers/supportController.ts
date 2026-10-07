@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AuthService } from "../services/AuthService.js";
 import { SupportService } from "../services/support/SupportService.js";
 import { SupportCaseService, casePageQuery } from "../services/support/SupportCaseService.js";
+import { SupportCustomerService } from "../services/support/SupportCustomerService.js";
 import { CustomerAnalysisService } from "../services/support/CustomerAnalysisService.js";
 
 const pagination = z.object({
@@ -23,6 +24,9 @@ export async function supportRoutes(app: FastifyInstance) {
   const auth = new AuthService();
   const service = new SupportService();
   const caseService = new SupportCaseService();
+  const customerService = new SupportCustomerService();
+  app.addHook("onClose", () => service.close());
+  app.addHook("onClose", () => customerService.close());
   app.addHook("onClose", () => caseService.close());
   const options = { logLevel: "silent" as const };
   app.addHook("onRequest", async (_request, reply) => {
@@ -52,9 +56,19 @@ export async function supportRoutes(app: FastifyInstance) {
     await auth.requirePermission(request, "support.customers.view");
     return service.customers(supportCustomerQuery.parse(request.query));
   });
-  app.get("/customers/:id", options, async (request) => {
+  app.get("/customers/:id", options, async (request, reply) => {
     await auth.requirePermission(request, "support.customer.view");
-    return service.customer(ids.parse(request.params).id);
+    const customerId = ids.parse(request.params).id;
+    const controller = new AbortController();
+    const disconnected = () => {
+      if (!reply.raw.writableEnded) controller.abort();
+    };
+    reply.raw.on("close", disconnected);
+    try {
+      return await customerService.customer(customerId, controller.signal);
+    } finally {
+      reply.raw.off("close", disconnected);
+    }
   });
   app.get("/customers/:id/analysis", options, async (request, reply) => {
     await auth.requirePermission(request, "support.customer.view", "support.customer.analyze");
@@ -127,6 +141,13 @@ export async function supportRoutes(app: FastifyInstance) {
     const user = await auth.requirePermission(request, "support.contract.view", "support.logins.view");
     const { id, loginId } = ids.required().parse(request.params);
     return service.technical.login(id, loginId, auth.can(user, "support.equipment.access"));
+  });
+  app.get("/contracts/:id/logins/:loginId/signal", options, async (request) => {
+    await auth.requirePermission(request, "support.contract.view", "support.logins.view");
+    const { id, loginId } = z
+      .object({ id: z.coerce.number().int().positive().safe(), loginId: z.coerce.number().int().positive().safe() })
+      .parse(request.params);
+    return service.technical.loginSignal(id, loginId);
   });
   app.get("/contracts/:id/logins/:loginId/secrets/:field", options, async (request) => {
     await auth.requirePermission(request, "support.contract.view", "support.logins.view", "support.credentials.view");

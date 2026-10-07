@@ -1,4 +1,20 @@
 export type RiskLevel = "LOW" | "ATTENTION" | "MEDIUM" | "HIGH" | "CRITICAL";
+export interface RetentionSummary {
+  activeCustomers: number | null;
+  blocked: number | null;
+  cancellationsThisMonth: number | null;
+  lowRisk: number | null;
+  attention: number | null;
+  medium: number | null;
+  highRisk: number | null;
+  critical: number | null;
+  operationalSource: "database" | "synchronized" | "unavailable";
+  operationalQueriedAt: string | null;
+  riskSource: "synchronized" | "unavailable";
+  riskCalculatedAt: string | null;
+  referenceDate: string;
+  warnings: string[];
+}
 export interface Customer {
   customer_id: number;
   contract_id: number;
@@ -87,7 +103,7 @@ export interface AuthUser {
   permissionOverrides?: Record<string, boolean>;
 }
 export const api = {
-  summary: () => request<Record<string, number>>("/summary"),
+  summary: () => request<RetentionSummary>("/summary", { cache: "no-store" }),
   customers: (params: URLSearchParams) => request<{ items: Customer[]; total: number }>(`/customers?${params}`),
   customer: (id: number, contractId?: number, signal?: AbortSignal) =>
     request<any>(`/customers/${id}${contractId ? `?contractId=${contractId}` : ""}`, { signal }),

@@ -1,4 +1,9 @@
 export const permissionCatalog = [
+  { key: "network.boxes.view", group: "Rede", label: "Consultar caixas de atendimento, capacidade e indicadores de conexão" },
+  { key: "network.logins.view", group: "Rede", label: "Ver logins por caixa, clientes, portas, IPs e dados de conexão" },
+  { key: "collections.customers.view", group: "Cobranças", label: "Ver fila de clientes, saldos e filtros de cobrança" },
+  { key: "collections.customer.view", group: "Cobranças", label: "Ver contatos e títulos detalhados do cliente" },
+  { key: "collections.export", group: "Cobranças", label: "Exportar e distribuir listas de cobrança em PDF" },
   { key: "finance.dashboard.view", group: "Financeiro", label: "Ver painel, evolução, contas e valores em aberto" },
   { key: "churn.dashboard", group: "Churn", label: "Ver painel e lista de clientes" },
   { key: "churn.analytics", group: "Churn", label: "Ver análises" },

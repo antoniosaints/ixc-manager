@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue";
 import { CheckCircle2, CircleAlert, Info, TriangleAlert, X, LoaderCircle } from "lucide-vue-next";
 import { toast, toastPositions, restoreToastPreferences } from "../notifications/toast";
+import { activeRecordDialogTarget } from "../composables/recordDialog";
 const icons = { success: CheckCircle2, error: CircleAlert, warning: TriangleAlert, info: Info };
 const groups = computed(() =>
   toastPositions
@@ -42,7 +43,7 @@ function focusOut(event: FocusEvent, id: number) {
 }
 </script>
 <template>
-  <Teleport to="body">
+  <Teleport :to="activeRecordDialogTarget">
     <div
       v-for="group in groups"
       :key="group.position"

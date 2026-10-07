@@ -267,24 +267,38 @@ export class SyncService {
       sortorder: "asc",
     })) {
       const activeRows: IxcRow[] = [];
+      const cancelledRows: IxcRow[] = [];
       for (const r of batch.rows) {
+        if (value(r, "id") === null || value(r, "id_cliente") === null) continue;
+        this.trackCustomer(value(r, "id_cliente"));
         const cancelled = value(r, "status") === "I";
         if (cancelled) {
-          await db.execute(
-            "INSERT INTO retention_cancellations (customer_id,contract_id,cancellation_date,cancellation_reason_id,cancellation_observation) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE cancellation_date=VALUES(cancellation_date),cancellation_reason_id=VALUES(cancellation_reason_id),cancellation_observation=VALUES(cancellation_observation)",
-            [
-              value(r, "id_cliente"),
-              value(r, "id"),
-              asDate(value(r, "data_cancelamento")),
-              value(r, "motivo_cancelamento"),
-              value(r, "obs_cancelamento"),
-            ]
-          );
+          cancelledRows.push(r);
           continue;
         }
-        batch.rows.forEach((row) => this.trackCustomer(value(row, "id_cliente")));
         activeRows.push(r);
       }
+      // Batch cancellation writes locally, preserving ownership and existing history.
+      // Previously this also left formerly active contracts eligible for risk analysis.
+      for (const cancelledBatch of chunks(cancelledRows, env.RETENTION_SYNC_BATCH_SIZE)) {
+        await db.execute(
+          `UPDATE retention_contracts SET status='I',synced_at=NOW() WHERE (id,customer_id) IN (${cancelledBatch.map(() => "(?,?)").join(",")})`,
+          cancelledBatch.flatMap((r) => [value(r, "id"), value(r, "id_cliente")])
+        );
+      }
+      await upsertRows(
+        "retention_cancellations",
+        ["customer_id", "contract_id", "cancellation_date", "cancellation_reason_id", "cancellation_observation"],
+        cancelledRows.map((r) => [
+          value(r, "id_cliente"),
+          value(r, "id"),
+          asDate(value(r, "data_cancelamento")),
+          value(r, "motivo_cancelamento"),
+          value(r, "obs_cancelamento"),
+        ]) as DbValue[][],
+        "cancellation_date=VALUES(cancellation_date),cancellation_reason_id=VALUES(cancellation_reason_id),cancellation_observation=VALUES(cancellation_observation)",
+        { syncedAt: false }
+      );
       await upsertRows(
         "retention_contracts",
         [

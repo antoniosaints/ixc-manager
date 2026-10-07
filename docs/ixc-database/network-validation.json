@@ -1,0 +1,44 @@
+{
+  "validatedAt": "2026-10-07T18:36:50.143Z",
+  "readOnly": true,
+  "persistence": "none",
+  "source": "API IXC + MySQL snapshot READ ONLY",
+  "apiEndpoints": [
+    "rad_caixa_ftth",
+    "radusuarios"
+  ],
+  "checks": {
+    "apiBoxMatchesDatabase": true,
+    "apiLoginTotalMatchesDatabase": true,
+    "onlineOfflineUnknownMatch": true,
+    "filtersMatchCounters": true,
+    "capacityMatches": true,
+    "parameterized": true,
+    "noSecretsSelected": true
+  },
+  "sampleBoxId": 2773,
+  "sampleLogins": 16,
+  "boxes": 3184,
+  "summary": {
+    "boxes": 3184,
+    "activeLogins": 11800,
+    "onlineLogins": 10885,
+    "offlineLogins": 912,
+    "unknownLogins": 3
+  },
+  "loginQueryIndexes": [
+    {
+      "table": "r",
+      "key": "id_caixa_ftth"
+    },
+    {
+      "table": "c",
+      "key": "PRIMARY"
+    },
+    {
+      "table": "ct",
+      "key": "PRIMARY"
+    }
+  ],
+  "durationMs": 1215
+}

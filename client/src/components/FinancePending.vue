@@ -5,6 +5,7 @@ import { financePending } from "../financeApi";
 import { useLiveQuery } from "../composables/useLiveQuery";
 import { useAuthStore } from "../stores/auth";
 import LiveQueryState from "./LiveQueryState.vue";
+import RecordQuickLink from "./RecordQuickLink.vue";
 import LivePagination from "./LivePagination.vue";
 const props = defineProps<{
   params: URLSearchParams;
@@ -17,7 +18,12 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   selection: [{ kind: string; scope: string; bucket: string; search: string; searchBy: string; sort: string }];
+  receivableScope: [value: string];
 }>();
+const receivableScope = computed({
+  get: () => props.params.get("receivableScope") ?? "active",
+  set: (value: string) => emit("receivableScope", value),
+});
 const auth = useAuthStore(),
   page = ref(1),
   limit = ref(10);
@@ -81,6 +87,17 @@ function apply() {
             <option value="payable">A pagar</option>
           </select></label
         >
+        <label v-if="form.kind === 'receivable'" class="text-[11px] text-slate-500"
+          >Clientes / contratos<select
+            id="finance-pending-receivable-scope"
+            v-model="receivableScope"
+            class="input mt-1"
+            :disabled="loading"
+          >
+            <option value="active">Somente ativos</option>
+            <option value="all">Todos</option>
+          </select></label
+        >
         <label class="text-[11px] text-slate-500"
           >Base<select v-model="form.scope" class="input mt-1" @change="apply">
             <option value="aging">Carteira vencida atual</option>
@@ -135,6 +152,13 @@ function apply() {
             : "Somente títulos com vencimento no período escolhido acima."
         }}
         Filtros de filial, conta e regime se aplicam à lista. Saldos de títulos ativos, sem estornos ou antigos renegociados.
+        <template v-if="applied.kind === 'receivable'">
+          {{
+            receivableScope === "active"
+              ? "Somente clientes ativos com o título vinculado a um contrato ativo do mesmo cliente."
+              : "Todos: inclui clientes inativos, contratos cancelados e títulos sem contrato."
+          }}
+        </template>
       </p>
     </div>
     <LiveQueryState :loading="loading" :error="error" @retry="reload" />
@@ -163,8 +187,31 @@ function apply() {
                   >{{ item.partyName ?? "Cliente não informado" }}<ArrowUpRight class="h-3 w-3 shrink-0" aria-hidden="true" /></RouterLink
                 ><strong v-else class="font-semibold">{{ item.partyName ?? "Cadastro não informado" }}</strong
                 ><span class="compact-secondary"
-                  >{{ item.partyId ? `#${item.partyId}` : "" }}{{ item.contractId ? ` · Contrato #${item.contractId}` : "" }}</span
+                  >{{ item.partyId ? `#${item.partyId}` : ""
+                  }}<RecordQuickLink
+                    v-if="
+                      data.kind === 'receivable' &&
+                      item.contractId &&
+                      (auth.can('support.contract.view') || auth.can('upgrades.contract.view'))
+                    "
+                    class="ml-1"
+                    :target="{ kind: 'contract', id: item.contractId, module: auth.can('support.contract.view') ? 'support' : 'upgrades' }"
+                    :label="`Contrato #${item.contractId}`"
+                  /><span v-else>{{ item.contractId ? ` · Contrato #${item.contractId}` : "" }}</span></span
                 >
+                <span v-if="data.kind === 'receivable' && data.receivableScope === 'all'" class="compact-secondary">
+                  {{ item.partyActive === "S" ? "Cliente ativo" : item.partyActive === "N" ? "Cliente inativo" : "Cadastro não informado" }}
+                  ·
+                  {{
+                    item.contractStatus === "A"
+                      ? "Contrato ativo"
+                      : item.contractStatus === "I"
+                        ? "Contrato cancelado"
+                        : item.contractStatus
+                          ? "Contrato não ativo"
+                          : "Sem contrato válido"
+                  }}
+                </span>
               </td>
               <td>
                 #{{ item.id }}<span class="compact-secondary">{{ item.document || "Sem documento" }}</span>

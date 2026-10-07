@@ -15,7 +15,49 @@ export interface SupportCustomerDetails extends SupportCustomer {
   zip: string | null;
   reference: string | null;
   contacts: ContractContact[];
-  notes: { label: string; content: string }[];
+  notes: { label: string; content: string; truncated?: boolean }[];
+  tradeName: string | null;
+  socialName: string | null;
+  personType: string | null;
+  categoryId: number | null;
+  category: string | null;
+  branchId: number | null;
+  branch: string | null;
+  salespersonId: number | null;
+  salesperson: string | null;
+  registeredAt: string | null;
+  updatedAt: string | null;
+  state: string | null;
+  internetStatus: string | null;
+  localityType: string | null;
+  block: string | null;
+  apartment: string | null;
+  billingAddress: {
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    neighborhood: string | null;
+    zip: string | null;
+    reference: string | null;
+  };
+  billing: {
+    dueDay: number | null;
+    automaticBlock: boolean | null;
+    overdueNotice: boolean | null;
+    doNotBlockUntil: string | null;
+    doNotNotifyUntil: string | null;
+    email: boolean | null;
+    sms: boolean | null;
+  };
+  relatedContacts: {
+    id: number | null;
+    name: string;
+    email: string | null;
+    primary: boolean | null;
+    active: boolean | null;
+    numbers: ContractContact[];
+  }[];
+  contactsTruncated: boolean;
 }
 export type AnalysisCategory = "financial" | "support" | "network" | "contract" | "satisfaction";
 export interface CustomerAnalysis {
@@ -97,7 +139,7 @@ export const supportApi = {
     get<{ login: UpgradeLogin; queriedAt: string }>(`/contracts/${encodeURIComponent(id)}/logins/${loginId}`, signal),
   customers: (params: URLSearchParams, signal?: AbortSignal) => get<LivePage<SupportCustomer>>(`/customers?${params}`, signal),
   customer: (id: string, signal?: AbortSignal) =>
-    get<{ customer: SupportCustomerDetails; queriedAt: string }>(`/customers/${encodeURIComponent(id)}`, signal),
+    get<{ customer: SupportCustomerDetails; queriedAt: string; source: "database" }>(`/customers/${encodeURIComponent(id)}`, signal),
   analyze: (id: string, signal?: AbortSignal) => get<CustomerAnalysis>(`/customers/${encodeURIComponent(id)}/analysis`, signal),
   contracts: (id: string, params: URLSearchParams, signal?: AbortSignal) =>
     get<LivePage<SupportContract>>(`/customers/${encodeURIComponent(id)}/contracts?${params}`, signal),

@@ -10,6 +10,7 @@ import {
   retentionQueue,
 } from "../queues/retentionQueue.js";
 import { AuthService } from "../services/AuthService.js";
+import { RetentionSummaryService } from "../services/retention/RetentionSummaryService.js";
 
 import { getCustomerRiskSnapshot } from "../services/retention/CustomerRiskSnapshot.js";
 import { createCustomerRiskPdf } from "../services/retention/CustomerRiskPdf.js";
@@ -44,12 +45,15 @@ const listQuery = z.object({
 });
 
 export async function retentionRoutes(app: FastifyInstance) {
+  const summary = new RetentionSummaryService();
+  app.addHook("onClose", () => summary.close());
   app.addHook("preHandler", async (request) => {
     await auth.requireUser(request);
   });
-  app.get("/summary", async (request) => {
+  app.get("/summary", async (request, reply) => {
     await auth.requirePermission(request, "churn.dashboard");
-    return repo.getSummary();
+    reply.header("Cache-Control", "no-store");
+    return summary.getSummary();
   });
   app.get("/customers", async (request) => {
     const filter = listQuery.parse(request.query);

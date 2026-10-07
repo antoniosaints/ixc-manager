@@ -1,15 +1,30 @@
 <script setup lang="ts">
+import { fontOptions, fontFamily, normalizeTypography } from "../typography";
+import { loadSystemFont } from "../fontLoader";
 import ToastPreferences from "../components/ToastPreferences.vue";
 import { toast } from "../notifications/toast";
-import { Image as ImageIcon, Palette as PaletteIcon, SwatchBook, Check, RotateCcw, Save, Sun, Moon } from "lucide-vue-next";
+import { Image as ImageIcon, Palette as PaletteIcon, SwatchBook, Check, RotateCcw, Save, Sun, Moon, Type } from "lucide-vue-next";
 
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 
 import { defaultAppearance, settingsApi, type Appearance, type Palette } from "../settingsApi";
 import { contrast, useAppearanceStore } from "../stores/appearance";
 import { themePresets, applyThemePreset, matchingThemePreset, type ThemePreset } from "../appearancePresets";
 const appearance = useAppearanceStore();
 const form = reactive<Appearance>(structuredClone(defaultAppearance));
+watch(
+  () => form.typography.font,
+  (font) => {
+    void loadSystemFont(font).catch(() => toast.error("Não foi possível carregar a fonte", "Tente recarregar a página."));
+  },
+  { immediate: true }
+);
+const typographyPreview = computed(() => ({
+  fontFamily: fontFamily(form.typography.font),
+  fontSize: `${form.typography.size}px`,
+  fontWeight: String(form.typography.minWeight),
+  "--appearance-font-weight-min": String(form.typography.minWeight),
+}));
 const accentContrast = (color: string) => (contrast(color, "#ffffff") >= contrast(color, "#0f172a") ? "#ffffff" : "#0f172a");
 const paletteMode = ref<"light" | "dark">("light");
 const palette = computed(() => form[paletteMode.value]);
@@ -27,6 +42,8 @@ const labels: Record<keyof Palette, string> = {
   primary: "Cor primária geral",
   churn: "Cor do Churn",
   upgrades: "Cor do Upgrades",
+  collections: "Cor de Cobranças",
+  network: "Cor de Rede",
 };
 function applyPreset(preset: ThemePreset) {
   Object.assign(form, applyThemePreset(form, preset));
@@ -35,7 +52,8 @@ function applyPreset(preset: ThemePreset) {
 }
 onMounted(async () => {
   try {
-    Object.assign(form, await settingsApi.appearance());
+    const saved = await settingsApi.appearance();
+    Object.assign(form, saved, { typography: normalizeTypography(saved.typography) });
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Não foi possível carregar.";
   } finally {
@@ -75,7 +93,7 @@ async function save() {
   try {
     appearance.set(await settingsApi.saveAppearance(JSON.parse(JSON.stringify(form))));
     appearance.followDefault();
-    toast.success("Aparência salva", "As cores foram aplicadas ao sistema.");
+    toast.success("Aparência salva", "Cores e tipografia foram aplicadas ao sistema.");
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Não foi possível salvar.";
     toast.error("Não foi possível salvar a aparência", error.value);
@@ -143,6 +161,60 @@ const reset = async () => {
       </div>
       <p class="mt-2 text-[10px] text-slate-500">PNG, JPEG ou WebP · até 256 KB por imagem. Prefira ícones quadrados para o favicon.</p>
     </section>
+    <section class="panel p-4" aria-labelledby="appearance-typography-title">
+      <h2 id="appearance-typography-title" class="mb-1 flex items-center gap-2 text-sm font-bold">
+        <Type class="h-4 w-4" aria-hidden="true" />Tipografia do sistema
+      </h2>
+      <p class="mb-3 text-xs text-slate-500">Escolha a fonte e ajuste a leitura. As alterações são aplicadas ao salvar a aparência.</p>
+      <div class="grid items-start gap-4 lg:grid-cols-[1fr_360px]">
+        <div class="grid gap-3 sm:grid-cols-3">
+          <label for="appearance-font" class="text-xs font-medium text-slate-500"
+            >Fonte
+            <select id="appearance-font" v-model="form.typography.font" class="input mt-1">
+              <option v-for="font in fontOptions" :key="font.value" :value="font.value">{{ font.label }}</option>
+            </select>
+          </label>
+          <label for="appearance-font-size" class="text-xs font-medium text-slate-500"
+            >Tamanho base
+            <select id="appearance-font-size" v-model.number="form.typography.size" class="input mt-1">
+              <option v-for="size in [14, 15, 16, 17, 18, 19, 20]" :key="size" :value="size">
+                {{ size }} px{{ size === 16 ? " · padrão" : "" }}
+              </option>
+            </select>
+          </label>
+          <label for="appearance-font-weight" class="text-xs font-medium text-slate-500"
+            >Espessura mínima
+            <select id="appearance-font-weight" v-model.number="form.typography.minWeight" class="input mt-1">
+              <option :value="400">400 · Regular</option>
+              <option :value="500">500 · Média</option>
+              <option :value="600">600 · Seminegrito</option>
+              <option :value="700">700 · Negrito</option>
+            </select>
+          </label>
+          <p class="text-[11px] text-slate-500 sm:col-span-3">
+            O tamanho escala títulos, tabelas e legendas proporcionalmente. A espessura mínima reforça textos leves e preserva os destaques.
+          </p>
+          <button
+            type="button"
+            class="record-quick-link w-fit sm:col-span-3"
+            @click="form.typography = { ...defaultAppearance.typography }"
+          >
+            <RotateCcw class="h-3.5 w-3.5" aria-hidden="true" />Restaurar tipografia padrão
+          </button>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-3" :style="typographyPreview" aria-label="Prévia da tipografia">
+          <p class="mb-2" style="font-size: 0.7em">
+            Prévia · {{ fontOptions.find((font) => font.value === form.typography.font)?.label }} · {{ form.typography.size }} px
+          </p>
+          <h3 class="mb-1 font-bold" style="font-size: 1.125em">Clientes e oportunidades</h3>
+          <p style="font-size: 0.875em">Informações claras para agilizar o atendimento.</p>
+          <div class="mt-3 flex justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5" style="font-size: 0.75em">
+            <span>Contrato #29114</span><strong>Ativo</strong>
+          </div>
+          <p class="mt-2 text-slate-500" style="font-size: 0.6875em">Última consulta · 07/10 às 09:30</p>
+        </div>
+      </div>
+    </section>
     <section class="panel p-4">
       <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
@@ -182,7 +254,7 @@ const reset = async () => {
           ><Check v-if="activePreset === preset.id" class="h-4 w-4 shrink-0" aria-hidden="true" focusable="false" />
         </button>
       </div>
-      <p class="mt-3 text-[11px] text-slate-500">Os presets preservam as cores de Churn e Upgrades, o logo, o favicon e o modo padrão.</p>
+      <p class="mt-3 text-[11px] text-slate-500">Os presets preservam as cores dos módulos, o logo, o favicon e o modo padrão.</p>
     </section>
     <section class="panel p-4">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -248,6 +320,7 @@ const reset = async () => {
                   { key: 'primary', label: 'Geral' },
                   { key: 'churn', label: 'Churn' },
                   { key: 'upgrades', label: 'Upgrades' },
+                  { key: 'collections', label: 'Cobranças' },
                 ] as const"
                 :key="accent.key"
                 class="rounded px-2.5 py-1.5 text-[11px] font-semibold"

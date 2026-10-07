@@ -11,6 +11,7 @@ export interface FinanceAccount {
 export interface FinanceDashboard {
   source: "ixc-database";
   regime: "all" | "cash" | "competence" | "manual";
+  receivableScope: "active" | "all";
   durationMs: number;
   aging: {
     asOf: string;
@@ -110,8 +111,10 @@ export interface FinancePending {
     id: string;
     partyId: number | null;
     partyName: string | null;
+    partyActive: string | null;
     contractId: number | null;
     contractName: string | null;
+    contractStatus: string | null;
     accountId: number | null;
     accountName: string | null;
     branchId: number | null;
@@ -131,6 +134,7 @@ export interface FinancePending {
   kind: string;
   scope: string;
   bucket: string;
+  receivableScope: "active" | "all";
   asOf: string;
   queriedAt: string;
 }

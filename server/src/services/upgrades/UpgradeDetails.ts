@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import { connectionIp, connectionStatus } from "../network/LoginConnection.js";
 type Row = Record<string, unknown>;
 const text = (value: unknown) => (value == null ? "" : String(value).trim());
 const optional = (value: unknown) => text(value) || null;
@@ -108,9 +109,7 @@ const authenticationLabels: Record<string, string> = {
   E: "Externa",
 };
 export function loginDetails(row: Row, allowAccess: boolean) {
-  const online = text(row.online);
-  // IXC uses S/N and also SS (sem status). SS is not an online session.
-  const status = online === "S" ? "online" : online === "N" ? "offline" : "unknown";
+  const status = connectionStatus(row.ip);
   return {
     id: positive(row.id),
     contractId: positive(row.id_contrato),
@@ -120,7 +119,7 @@ export function loginDetails(row: Row, allowAccess: boolean) {
     status,
     authentication: authenticationLabels[text(row.autenticacao)] ?? optional(row.autenticacao),
     connectionType: optional(row.tipo_conexao),
-    ip: optional(row.ip),
+    ip: connectionIp(row.ip),
     auxiliaryIp: optional(row.ip_aux),
     mac: optional(row.mac),
     ipv6Prefix: optional(row.pd_ipv6),
@@ -147,6 +146,9 @@ export function loginDetails(row: Row, allowAccess: boolean) {
     onuMac: optional(row.onu_mac),
     equipmentType: optional(row.tipo_equipamento),
     ftthBoxId: positive(row.id_caixa_ftth),
+    ftthBoxName: null as string | null,
+    ftthBoxSource: positive(row.id_caixa_ftth) ? ("login" as const) : null,
+    ftthBoxAmbiguous: false,
     ftthPort: optional(row.ftth_porta),
     vlan: optional(row.vlan),
     transmissionInterface: optional(row.interface_transmissao),

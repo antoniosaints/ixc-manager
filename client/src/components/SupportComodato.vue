@@ -8,6 +8,7 @@ import { formatDate } from "../upgradesApi";
 import { useAuthStore } from "../stores/auth";
 import { useLiveQuery } from "../composables/useLiveQuery";
 import LiveQueryState from "./LiveQueryState.vue";
+import RecordQuickLink from "./RecordQuickLink.vue";
 import LivePagination from "./LivePagination.vue";
 const props = defineProps<{ contractId: string }>();
 const auth = useAuthStore();
@@ -79,12 +80,12 @@ const status = (value: string | null) => (value === "E" ? "Emprestado" : value ?
                 }}<span class="mt-0.5 block text-[10px] text-slate-400">Quantidade {{ item.quantity ?? "não informada" }}</span>
               </td>
               <td class="px-4 py-2">
-                <RouterLink
-                  v-if="item.loginId && auth.can('support.logins.view')"
-                  :to="{ path: `/support/contracts/${contractId}`, query: { tab: 'logins', loginId: String(item.loginId) } }"
-                  class="font-semibold text-indigo-600 hover:underline"
-                  >Login #{{ item.loginId }} ↗</RouterLink
-                ><span v-else class="text-slate-500">{{ item.loginId ? `#${item.loginId}` : "Sem login vinculado" }}</span>
+                <RecordQuickLink
+                  v-if="item.loginId && auth.can('support.contract.view') && auth.can('support.logins.view')"
+                  :target="{ kind: 'login', id: item.loginId, contractId: Number(contractId) }"
+                  :label="`Login #${item.loginId}`"
+                />
+                <span v-else class="text-slate-500">{{ item.loginId ? `#${item.loginId}` : "Sem login vinculado" }}</span>
               </td>
             </tr>
           </tbody>

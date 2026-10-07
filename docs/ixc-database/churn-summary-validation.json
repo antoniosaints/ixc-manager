@@ -1,0 +1,19 @@
+{
+  "validatedAt": "2026-10-07T14:19:32.569Z",
+  "referenceDate": "2026-10-07",
+  "timeZone": "America/Sao_Paulo",
+  "ixcReadOnly": true,
+  "customerDetailsRecorded": false,
+  "scoreCalculationInvoked": false,
+  "comparison": {
+    "active": true,
+    "blocked": true,
+    "cancelled": true
+  },
+  "operationalQueryDurationMs": 67,
+  "serviceSourceCorrect": true,
+  "indexesUsed": [
+    "c.PRIMARY"
+  ],
+  "indexesCreated": false
+}

@@ -13,6 +13,9 @@ import {
   TrendingUp,
   PackageOpen,
   Banknote,
+  ReceiptText,
+  ListFilter,
+  Cable,
 } from "lucide-vue-next";
 import { api } from "./api";
 import { useAuthStore } from "./stores/auth";
@@ -34,21 +37,27 @@ watch(
   () => toast.cancelConfirmations()
 );
 const isUpgrades = computed(() => route.meta.module === "upgrades");
+const isNetwork = computed(() => route.meta.module === "network");
 const isFinance = computed(() => route.meta.module === "finance");
+const isCollections = computed(() => route.meta.module === "collections");
 const isSupport = computed(() => route.meta.module === "support");
 const isSettings = computed(() => route.meta.module === "settings");
 watch(
-  [isUpgrades, isSettings, isSupport, isFinance],
-  ([upgrades, settings, support, finance]) => {
-    document.title = finance
-      ? "Financeiro CAS"
-      : settings
-        ? "Configurações CAS"
-        : support
-          ? "Suporte CAS"
-          : upgrades
-            ? "Upgrades CAS"
-            : "Retenção CAS";
+  [isUpgrades, isSettings, isSupport, isFinance, isCollections, isNetwork],
+  ([upgrades, settings, support, finance, collections, network]) => {
+    document.title = network
+      ? "Rede CAS"
+      : collections
+        ? "Cobranças CAS"
+        : finance
+          ? "Financeiro CAS"
+          : settings
+            ? "Configurações CAS"
+            : support
+              ? "Suporte CAS"
+              : upgrades
+                ? "Upgrades CAS"
+                : "Retenção CAS";
   },
   { immediate: true }
 );
@@ -78,50 +87,114 @@ const logout = async () => {
   <div
     v-else
     class="min-h-screen"
-    :data-module="isFinance ? 'finance' : isSettings ? 'settings' : isSupport ? 'support' : isUpgrades ? 'upgrades' : 'churn'"
+    :data-module="
+      isNetwork
+        ? 'network'
+        : isCollections
+          ? 'collections'
+          : isFinance
+            ? 'finance'
+            : isSettings
+              ? 'settings'
+              : isSupport
+                ? 'support'
+                : isUpgrades
+                  ? 'upgrades'
+                  : 'churn'
+    "
   >
     <a href="#main-content" class="skip-link">Ir para o conteúdo principal</a>
     <header class="border-b border-slate-200 bg-white">
       <div class="app-header-inner">
         <RouterLink
           :to="
-            isFinance
-              ? '/finance'
-              : isSettings
-                ? '/settings'
-                : isSupport
-                  ? auth.can('support.customers.view')
-                    ? '/support'
-                    : auth.home
-                  : isUpgrades
-                    ? auth.can('upgrades.opportunities.view')
-                      ? '/upgrades'
-                      : auth.can('upgrades.plans.view')
-                        ? '/upgrades/plans'
+            isNetwork
+              ? '/network'
+              : isCollections
+                ? '/collections'
+                : isFinance
+                  ? '/finance'
+                  : isSettings
+                    ? '/settings'
+                    : isSupport
+                      ? auth.can('support.customers.view')
+                        ? '/support'
                         : auth.home
-                    : auth.home
+                      : isUpgrades
+                        ? auth.can('upgrades.opportunities.view')
+                          ? '/upgrades'
+                          : auth.can('upgrades.plans.view')
+                            ? '/upgrades/plans'
+                            : auth.home
+                        : auth.home
           "
           class="flex min-w-0 items-center gap-3"
           ><img :src="appearance.value.logo" alt="CAS" class="h-10 w-auto max-w-[112px] rounded-lg object-contain" /><span class="min-w-0"
             ><strong class="block truncate leading-4">{{
-              isFinance ? "FINANCEIRO" : isSettings ? "CONFIGURAÇÕES" : isSupport ? "SUPORTE" : isUpgrades ? "UPGRADES" : "RETENÇÃO"
+              isNetwork
+                ? "REDE"
+                : isCollections
+                  ? "COBRANÇAS"
+                  : isFinance
+                    ? "FINANCEIRO"
+                    : isSettings
+                      ? "CONFIGURAÇÕES"
+                      : isSupport
+                        ? "SUPORTE"
+                        : isUpgrades
+                          ? "UPGRADES"
+                          : "RETENÇÃO"
             }}</strong
             ><small class="block truncate text-slate-500">{{
-              isFinance
-                ? "CAS · análise financeira"
-                : isSettings
-                  ? "CAS · administração do sistema"
-                  : isSupport
-                    ? "CAS · atendimento e validação"
-                    : isUpgrades
-                      ? "CAS · evolução de planos"
-                      : "CAS · inteligência de churn"
+              isNetwork
+                ? "CAS · infraestrutura e conexões"
+                : isCollections
+                  ? "CAS · gestão de pendências"
+                  : isFinance
+                    ? "CAS · análise financeira"
+                    : isSettings
+                      ? "CAS · administração do sistema"
+                      : isSupport
+                        ? "CAS · atendimento e validação"
+                        : isUpgrades
+                          ? "CAS · evolução de planos"
+                          : "CAS · inteligência de churn"
             }}</small></span
           ></RouterLink
         >
-        <nav v-if="isFinance" class="app-header-nav flex items-center gap-2 text-sm font-medium" aria-label="Navegação do Financeiro">
-          <RouterLink to="/finance" class="finance-nav-active rounded-lg px-3 py-2"
+        <nav v-if="isNetwork" class="app-header-nav flex items-center gap-2 text-sm font-medium" aria-label="Navegação de Rede">
+          <RouterLink to="/network" class="network-nav-active rounded-lg px-3 py-2"
+            ><Cable class="mr-1 inline h-4 w-4" aria-hidden="true" />Caixas de atendimento</RouterLink
+          ><button type="button" class="button-primary ml-2 !px-3 !py-2" @click="upgradesRefresh++">
+            <RefreshCw class="h-4 w-4" aria-hidden="true" />Atualizar consulta
+          </button>
+        </nav>
+        <nav
+          v-else-if="isCollections"
+          class="app-header-nav flex items-center gap-2 text-sm font-medium"
+          aria-label="Navegação de Cobranças"
+        >
+          <RouterLink to="/collections" class="collections-nav-active rounded-lg px-3 py-2"
+            ><ReceiptText class="mr-1 inline h-4 w-4" aria-hidden="true" />Clientes</RouterLink
+          >
+          <button type="button" @click="upgradesRefresh++" class="button-primary ml-2 !px-3 !py-2">
+            <RefreshCw class="h-4 w-4" aria-hidden="true" />Atualizar consulta
+          </button>
+        </nav>
+        <nav v-else-if="isFinance" class="app-header-nav flex items-center gap-2 text-sm font-medium" aria-label="Navegação do Financeiro">
+          <RouterLink
+            :to="{ path: '/finance', query: route.query }"
+            class="rounded-lg px-3 py-2 hover:bg-emerald-50"
+            :class="route.path === '/finance' ? 'finance-nav-active' : ''"
+            :aria-current="route.path === '/finance' ? 'page' : undefined"
             ><Banknote class="mr-1 inline h-4 w-4" aria-hidden="true" focusable="false" />Painel</RouterLink
+          >
+          <RouterLink
+            :to="{ path: '/finance/list', query: route.query }"
+            class="rounded-lg px-3 py-2 hover:bg-emerald-50"
+            :class="route.path === '/finance/list' ? 'finance-nav-active' : ''"
+            :aria-current="route.path === '/finance/list' ? 'page' : undefined"
+            ><ListFilter class="mr-1 inline h-4 w-4" aria-hidden="true" focusable="false" />Lista</RouterLink
           >
           <button type="button" @click="upgradesRefresh++" class="button-primary ml-2 !px-3 !py-2">
             <RefreshCw class="h-4 w-4" aria-hidden="true" focusable="false" />Atualizar consulta

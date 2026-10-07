@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { Headset, ChartNoAxesCombined, Layers3, TrendingUp, Settings2, Banknote } from "lucide-vue-next";
+import { Headset, ChartNoAxesCombined, Layers3, TrendingUp, Settings2, Banknote, ReceiptText, Network } from "lucide-vue-next";
 import { useRoute } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 
@@ -44,8 +44,14 @@ const modules = computed(() => [
   ...(auth.can("support.customers.view")
     ? [{ id: "support", label: "Suporte", description: "Consulta e validação de clientes", icon: Headset, to: "/support" }]
     : []),
+  ...(auth.can("network.boxes.view")
+    ? [{ id: "network", label: "Rede", description: "Caixas de atendimento e conexões", icon: Network, to: "/network" }]
+    : []),
   ...(auth.can("finance.dashboard.view")
     ? [{ id: "finance", label: "Financeiro", description: "Análise de receitas e despesas", icon: Banknote, to: "/finance" }]
+    : []),
+  ...(auth.can("collections.customers.view")
+    ? [{ id: "collections", label: "Cobranças", description: "Clientes com pendências financeiras", icon: ReceiptText, to: "/collections" }]
     : []),
   ...(auth.isAdmin
     ? [{ id: "settings", label: "Configurações", description: "Administração do sistema", icon: Settings2, to: "/settings" }]
@@ -73,6 +79,7 @@ const activeModule = computed(() => route.meta.module ?? "churn");
           'app-module-support': activeModule === module.id && module.id === 'support',
           'app-module-finance': activeModule === module.id && module.id === 'finance',
           'app-module-upgrades': activeModule === module.id && module.id === 'upgrades',
+          'app-module-collections': activeModule === module.id && module.id === 'collections',
         }"
       >
         <component :is="module.icon" class="h-5 w-5 shrink-0" aria-hidden="true" focusable="false" />

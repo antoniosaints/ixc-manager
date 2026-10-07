@@ -1,3 +1,5 @@
+import { loadSystemFont } from "../fontLoader";
+import { fontFamily, normalizeTypography } from "../typography";
 import { defineStore } from "pinia";
 import { defaultAppearance, settingsApi, type Appearance } from "../settingsApi";
 const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -67,10 +69,17 @@ export const useAppearanceStore = defineStore("appearance", {
     apply() {
       const root = document.documentElement,
         palette = this.dark ? this.value.dark : this.value.light;
+      const typography = normalizeTypography(this.value.typography);
+      root.style.setProperty("--appearance-font-family", fontFamily(typography.font));
+      root.style.setProperty("--appearance-font-size", `${typography.size}px`);
+      root.style.setProperty("--appearance-font-weight-min", String(typography.minWeight));
+      void loadSystemFont(typography.font).catch(() => {
+        /* The local fallback stays readable if a font asset fails to load. */
+      });
       root.dataset.theme = this.dark ? "dark" : "light";
       root.style.colorScheme = this.dark ? "dark" : "light";
       for (const [key, value] of Object.entries(palette)) root.style.setProperty(`--appearance-${key}`, value);
-      for (const key of ["primary", "churn", "upgrades"] as const) {
+      for (const key of ["primary", "churn", "upgrades", "collections", "network"] as const) {
         root.style.setProperty(
           `--appearance-${key}-contrast`,
           contrast(palette[key], "#ffffff") >= contrast(palette[key], "#0f172a") ? "#ffffff" : "#0f172a"

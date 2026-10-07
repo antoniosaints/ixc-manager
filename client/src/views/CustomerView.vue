@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CustomerQuickLinks from "../components/CustomerQuickLinks.vue";
+import RecordQuickLink from "../components/RecordQuickLink.vue";
 import { toast } from "../notifications/toast";
 import {
   ListChecks,
@@ -346,6 +348,17 @@ const eventTone = (type: string) =>
           >
           <RiskBadge v-if="data.customer.risk_level" :level="data.customer.risk_level" />
         </div>
+      </div>
+      <div class="mt-3 flex flex-wrap items-center gap-3">
+        <CustomerQuickLinks :customer-id="Number(data.customer.id)" :contract-id="Number(data.customer.contract_id)" />
+        <RecordQuickLink
+          :target="{
+            kind: 'contract',
+            id: Number(data.customer.contract_id),
+            module: auth.can('support.contract.view') ? 'support' : 'upgrades',
+          }"
+          :label="`Ver contrato #${data.customer.contract_id}`"
+        />
       </div>
       <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
         <p class="text-[11px] text-slate-500">

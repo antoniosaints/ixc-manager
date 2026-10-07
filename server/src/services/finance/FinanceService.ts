@@ -11,6 +11,7 @@ export const financeQuery = z
     branchId: z.coerce.number().int().positive().optional(),
     accountId: z.coerce.number().int().positive().optional(),
     regime: z.enum(["all", "cash", "competence", "manual"]).optional(),
+    receivableScope: z.enum(["active", "all"]).optional(),
   })
   .refine(
     (query) => query.from <= query.to && Date.parse(query.to) - Date.parse(query.from) < 366 * 86400000,

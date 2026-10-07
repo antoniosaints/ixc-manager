@@ -1,6 +1,7 @@
 import { IxcApiService, type IxcListRequest } from "../../integrations/ixc/IxcApiService.js";
 import { contactNumbers, loginDetails } from "../upgrades/UpgradeDetails.js";
 import { UpgradeService, dateOnly } from "../upgrades/UpgradeService.js";
+import { LoginNetworkService } from "../upgrades/LoginNetworkService.js";
 
 type Row = Record<string, unknown>;
 type Reader = Pick<IxcApiService, "listPage">;
@@ -25,9 +26,13 @@ export class SupportService {
   readonly technical: UpgradeService;
   constructor(
     private readonly ixc: Reader = new IxcApiService({ timeout: 10_000, attempts: 2 }),
-    private readonly now = () => new Date()
+    private readonly now = () => new Date(),
+    private readonly network = new LoginNetworkService()
   ) {
-    this.technical = new UpgradeService(ixc, now, { activeOnly: false });
+    this.technical = new UpgradeService(ixc, now, { activeOnly: false }, network);
+  }
+  async close() {
+    await this.technical.close();
   }
   private async read(endpoint: string, request: IxcListRequest, page = 1) {
     try {
@@ -234,11 +239,7 @@ export class SupportService {
   }
   async logins(customerId: number, query: SupportPage, allowAccess: boolean) {
     const { rows, total } = await this.owned(customerId, "radusuarios", query);
-    return this.page(
-      rows.map((row) => loginDetails(row, allowAccess)),
-      total,
-      query
-    );
+    return this.page(await this.network.enrich(rows.map((row) => loginDetails(row, allowAccess))), total, query);
   }
   async cases(customerId: number, kind: "orders" | "tickets", query: SupportPage) {
     const endpoint = kind === "orders" ? "su_oss_chamado" : "su_ticket";

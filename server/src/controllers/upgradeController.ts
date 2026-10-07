@@ -42,6 +42,7 @@ export async function upgradeRoutes(app: FastifyInstance) {
   const auth = new AuthService();
   const service = new UpgradeService();
   const settings = new SettingsService();
+  app.addHook("onClose", () => service.close());
   app.addHook("onRequest", async (_request, reply) => {
     reply.header("Cache-Control", "no-store");
   });
@@ -92,6 +93,13 @@ export async function upgradeRoutes(app: FastifyInstance) {
     const user = await auth.requirePermission(request, "upgrades.contract.view", "upgrades.logins.view");
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(request.params);
     return service.logins(id, pagination.parse(request.query), auth.can(user, "upgrades.equipment.access"));
+  });
+  app.get("/contracts/:id/logins/:loginId/signal", options, async (request) => {
+    await auth.requirePermission(request, "upgrades.contract.view", "upgrades.logins.view");
+    const { id, loginId } = z
+      .object({ id: z.coerce.number().int().positive().safe(), loginId: z.coerce.number().int().positive().safe() })
+      .parse(request.params);
+    return service.loginSignal(id, loginId);
   });
   app.get("/contracts/:id/logins/:loginId/secrets/:field", options, async (request) => {
     await auth.requirePermission(request, "upgrades.contract.view", "upgrades.logins.view", "upgrades.credentials.view");

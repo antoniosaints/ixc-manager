@@ -76,10 +76,14 @@ export class RetentionRepository {
       "LEFT JOIN retention_contract_attention attention ON attention.contract_id=ct.id",
     ];
     if (filters.overdue) {
-      joins.push("JOIN (SELECT DISTINCT contract_id FROM retention_financial_events WHERE status IN ('A','P') AND due_at<CURDATE()) overdue_contract ON overdue_contract.contract_id=ct.id");
+      joins.push(
+        "JOIN (SELECT DISTINCT contract_id FROM retention_financial_events WHERE status IN ('A','P') AND due_at<CURDATE()) overdue_contract ON overdue_contract.contract_id=ct.id"
+      );
     }
     if (filters.openSupport) {
-      joins.push("JOIN (SELECT customer_id FROM retention_tickets WHERE ticket_status IN ('N','EP','P') UNION SELECT customer_id FROM retention_service_orders WHERE status IN ('A','EN','AG')) open_support ON open_support.customer_id=c.id");
+      joins.push(
+        "JOIN (SELECT customer_id FROM retention_tickets WHERE ticket_status IN ('N','EP','P') UNION SELECT customer_id FROM retention_service_orders WHERE status IN ('A','EN','AG')) open_support ON open_support.customer_id=c.id"
+      );
     }
     if (filters.attentionOnly) {
       clauses.push("attention.contract_id IS NOT NULL");
@@ -98,12 +102,24 @@ export class RetentionRepository {
 
   async getSummary() {
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT COUNT(DISTINCT c.id) activeCustomers, SUM(rs.risk_level = 'LOW') lowRisk, SUM(rs.risk_level = 'ATTENTION') attention, SUM(rs.risk_level = 'MEDIUM') medium, SUM(rs.risk_level = 'HIGH') highRisk, COUNT(DISTINCT CASE WHEN rs.risk_level = 'CRITICAL' OR attention.contract_id IS NOT NULL THEN c.id END) critical, SUM(ct.internet_status IN ('CA','CM')) blocked FROM retention_customers c JOIN retention_contracts ct ON ct.customer_id=c.id AND ct.status <> 'I' JOIN retention_risk_scores rs ON rs.id=(SELECT id FROM retention_risk_scores x WHERE x.contract_id=ct.id ORDER BY calculated_at DESC,id DESC LIMIT 1) LEFT JOIN retention_contract_attention attention ON attention.contract_id=ct.id WHERE c.active='S'`
+      `SELECT COALESCE(SUM(rs.risk_level = 'LOW'),0) lowRisk, COALESCE(SUM(rs.risk_level = 'ATTENTION'),0) attention, COALESCE(SUM(rs.risk_level = 'MEDIUM'),0) medium, COALESCE(SUM(rs.risk_level = 'HIGH'),0) highRisk, COUNT(DISTINCT CASE WHEN rs.risk_level = 'CRITICAL' OR attention.contract_id IS NOT NULL THEN c.id END) critical, MAX(rs.calculated_at) riskCalculatedAt FROM retention_customers c JOIN retention_contracts ct ON ct.customer_id=c.id AND ct.status <> 'I' JOIN retention_risk_scores rs ON rs.id=(SELECT id FROM retention_risk_scores x WHERE x.contract_id=ct.id ORDER BY calculated_at DESC,id DESC LIMIT 1) LEFT JOIN retention_contract_attention attention ON attention.contract_id=ct.id WHERE c.active='S'`
     );
-    const [cancellations] = await db.query<RowDataPacket[]>(
-      "SELECT COUNT(*) total FROM retention_cancellations WHERE cancellation_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')"
+    return rows[0];
+  }
+
+  /** Fallback only: operational counts must not depend on the existence of scores. */
+  async getOperationalSummary(monthStart: string, dayAfter: string) {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT
+        (SELECT COUNT(*) FROM retention_customers WHERE active='S') activeCustomers,
+        (SELECT COUNT(DISTINCT ct.customer_id) FROM retention_contracts ct
+          JOIN retention_customers c ON c.id=ct.customer_id
+          WHERE c.active='S' AND ct.status='A' AND ct.internet_status IN ('CA','CM')) blocked,
+        (SELECT COUNT(*) FROM retention_cancellations
+          WHERE cancellation_date>=? AND cancellation_date<?) cancellationsThisMonth`,
+      [monthStart, dayAfter]
     );
-    return { ...rows[0], cancellationsThisMonth: Number(cancellations[0]?.total ?? 0) };
+    return rows[0];
   }
 
   async buildRiskContext(customerId: number, contractId: number): Promise<RiskContext | null> {
@@ -179,8 +195,12 @@ export class RetentionRepository {
         baselineDisconnects7d: hasRadiusHistory ? Number(n.baseline ?? 0) : 0,
         shortSessions7d: hasRadiusHistory ? Number(n.shorts7 ?? 0) : 0,
         offlineDays: hasRadiusHistory
-          ? Number(n.days7 ?? 0) === 0 ? 7 : 0
-          : Number(liveNetwork.online_now ?? 0) > 0 ? 0 : Number(liveNetwork.offline_days ?? 0),
+          ? Number(n.days7 ?? 0) === 0
+            ? 7
+            : 0
+          : Number(liveNetwork.online_now ?? 0) > 0
+            ? 0
+            : Number(liveNetwork.offline_days ?? 0),
         consumptionDropPercent: baselineUse > 0 ? Math.max(0, (1 - currentUse / baselineUse) * 100) : undefined,
         recurringTerminateCause: hasRadiusHistory && Boolean(n.cause),
       },

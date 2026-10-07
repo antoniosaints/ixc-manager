@@ -1,3 +1,4 @@
+import { defaultTypography, type Typography } from "./typography";
 export interface Palette {
   background: string;
   surface: string;
@@ -8,8 +9,11 @@ export interface Palette {
   primary: string;
   churn: string;
   upgrades: string;
+  collections: string;
+  network: string;
 }
 export interface Appearance {
+  typography: Typography;
   mode: "light" | "dark" | "system";
   logo: string;
   favicon: string;
@@ -29,6 +33,7 @@ export interface AccessCatalog {
   profiles: AccessProfile[];
 }
 export const defaultAppearance: Appearance = {
+  typography: { ...defaultTypography },
   mode: "light",
   logo: "/cas-logo.png",
   favicon: "/cas-logo.png",
@@ -42,6 +47,8 @@ export const defaultAppearance: Appearance = {
     primary: "#2563eb",
     churn: "#0891b2",
     upgrades: "#7c3aed",
+    collections: "#c2410c",
+    network: "#0284c7",
   },
   dark: {
     background: "#0b1120",
@@ -53,6 +60,8 @@ export const defaultAppearance: Appearance = {
     primary: "#60a5fa",
     churn: "#22d3ee",
     upgrades: "#a78bfa",
+    collections: "#fb923c",
+    network: "#38bdf8",
   },
 };
 async function request<T>(path: string, method = "GET", body?: unknown): Promise<T> {

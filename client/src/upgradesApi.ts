@@ -99,6 +99,9 @@ export interface UpgradeLogin {
   onuMac: string | null;
   equipmentType: string | null;
   ftthBoxId: number | null;
+  ftthBoxName: string | null;
+  ftthBoxSource?: "login" | "onu" | null;
+  ftthBoxAmbiguous?: boolean;
   ftthPort: string | null;
   vlan: string | null;
   transmissionInterface: string | null;
@@ -109,6 +112,27 @@ export interface UpgradeLogin {
   usesCustomerAddress: boolean | null;
   accessTargets: EquipmentTarget[];
   secretAvailability: Record<LoginSecretField, boolean>;
+}
+export interface LoginSignalReading {
+  onuId: number;
+  model: string | null;
+  serial: string | null;
+  pon: string | null;
+  rxDbm: number | null;
+  txDbm: number | null;
+  measuredAt: string | null;
+  temperatureC: number | null;
+  voltageV: number | null;
+  powerStatus: "regular" | "irregular" | "indefinido" | null;
+  authorization: "authorized" | "unauthorized" | null;
+  linkedContractId?: number | null;
+  contractMismatch?: boolean;
+}
+export interface LoginSignalDetails {
+  readings: LoginSignalReading[];
+  truncated: boolean;
+  source: "ixc-database" | "ixc-api";
+  queriedAt: string;
 }
 export interface UpgradePlan {
   id: number;
@@ -161,6 +185,8 @@ export function createTechnicalApi(base: string) {
       ),
     logins: (id: string, params: URLSearchParams, signal?: AbortSignal) =>
       getTechnical<LivePage<UpgradeLogin>>(`/contracts/${encodeURIComponent(id)}/logins?${params}`, signal),
+    loginSignal: (id: string, loginId: number, signal?: AbortSignal) =>
+      getTechnical<LoginSignalDetails>(`/contracts/${encodeURIComponent(id)}/logins/${loginId}/signal`, signal),
     loginSecret: (id: string, loginId: number, field: LoginSecretField, signal?: AbortSignal) =>
       getTechnical<{ value: string | null; queriedAt: string }>(
         `/contracts/${encodeURIComponent(id)}/logins/${loginId}/secrets/${field}`,

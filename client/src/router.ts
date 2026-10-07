@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
+import NetworkView from "./views/NetworkView.vue";
 import FinanceView from "./views/FinanceView.vue";
+import CollectionsView from "./views/CollectionsView.vue";
 import DashboardView from "./views/DashboardView.vue";
 import CustomerView from "./views/CustomerView.vue";
 import AnalyticsView from "./views/AnalyticsView.vue";
@@ -21,7 +23,14 @@ import { useAuthStore } from "./stores/auth";
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: "/network", component: NetworkView, meta: { module: "network", permission: "network.boxes.view" } },
+    { path: "/collections", component: CollectionsView, meta: { module: "collections", permission: "collections.customers.view" } },
     { path: "/finance", component: FinanceView, meta: { module: "finance", permission: "finance.dashboard.view" } },
+    {
+      path: "/finance/list",
+      component: FinanceView,
+      meta: { module: "finance", financeView: "list", permission: "finance.dashboard.view" },
+    },
     { path: "/support", component: SupportView, meta: { module: "support", permission: "support.customers.view" } },
     { path: "/support/customers/:id", component: SupportCustomerView, meta: { module: "support", permission: "support.customer.view" } },
     { path: "/support/contracts/:id", component: UpgradeContractView, meta: { module: "support", permission: "support.contract.view" } },

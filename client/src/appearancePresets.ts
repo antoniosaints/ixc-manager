@@ -87,8 +87,20 @@ const sharedKeys = ["background", "surface", "muted", "text", "secondary", "bord
 export function applyThemePreset(appearance: Appearance, preset: ThemePreset): Appearance {
   return {
     ...appearance,
-    light: { ...preset.light, churn: appearance.light.churn, upgrades: appearance.light.upgrades },
-    dark: { ...preset.dark, churn: appearance.dark.churn, upgrades: appearance.dark.upgrades },
+    light: {
+      ...preset.light,
+      churn: appearance.light.churn,
+      upgrades: appearance.light.upgrades,
+      collections: appearance.light.collections,
+      network: appearance.light.network,
+    },
+    dark: {
+      ...preset.dark,
+      churn: appearance.dark.churn,
+      upgrades: appearance.dark.upgrades,
+      collections: appearance.dark.collections,
+      network: appearance.dark.network,
+    },
   };
 }
 export function matchingThemePreset(appearance: Appearance): string | null {

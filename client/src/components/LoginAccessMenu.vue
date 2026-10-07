@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { toast } from "../notifications/toast";
-import { computed, useId, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, inject, useId, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { recordDialogPortal } from "../composables/recordDialog";
 import { ArrowUpRight, ChevronDown, LoaderCircle } from "lucide-vue-next";
 import { useAuthStore } from "../stores/auth";
 import { supportApi } from "../supportApi";
@@ -11,6 +12,7 @@ const props = withDefaults(
   { module: "upgrades" }
 );
 const auth = useAuthStore();
+const portalTarget = inject(recordDialogPortal, "body");
 const open = ref(false),
   preparing = ref(false),
   copying = ref(false),
@@ -223,9 +225,8 @@ async function access(option: EquipmentAccessOption) {
     <p v-if="message" role="alert" class="mt-1 max-w-56 text-left text-[11px] font-normal text-slate-500">
       {{ message }}
     </p>
-    <Teleport to="body">
+    <Teleport v-if="open" :to="portalTarget">
       <div
-        v-if="open"
         :data-module="props.module"
         :id="menuId"
         ref="menu"

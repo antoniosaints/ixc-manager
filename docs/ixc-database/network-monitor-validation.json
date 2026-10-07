@@ -1,0 +1,21 @@
+{
+  "checkedAt": "2026-10-07T18:51:25.360Z",
+  "source": "ixc-database",
+  "sampleBoxId": 2773,
+  "readOnly": true,
+  "rows": 16,
+  "elapsedMs": 101,
+  "index": [
+    {
+      "table": "r",
+      "key": "id_caixa_ftth",
+      "type": "ref"
+    }
+  ],
+  "selectedFields": ["id", "id_caixa_ftth", "ativo", "online", "ftth_porta"],
+  "statusCounts": {
+    "online": 15,
+    "offline": 1,
+    "unknown": 0
+  }
+}

@@ -18,7 +18,7 @@ const dates = computed(() => [
 ]);
 </script>
 <template>
-  <div class="support-case-snapshot">
+  <section class="support-case-snapshot support-case-card" aria-label="Resumo do contrato">
     <div>
       <span class="support-case-caption">Contrato</span
       ><TechnicalStatus
@@ -40,7 +40,7 @@ const dates = computed(() => [
       ><strong>{{ formatDate(contract.expiresAt) }}</strong>
     </div>
     <div><span class="support-case-caption">Permanência</span><PermanenceBadge :contract="contract" /></div>
-  </div>
+  </section>
   <div class="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
     <div class="min-w-0 space-y-3">
       <ContractFields

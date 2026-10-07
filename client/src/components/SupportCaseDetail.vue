@@ -11,8 +11,6 @@ import {
   UserRound,
   MapPin,
   FileText,
-  Network,
-  ArrowUpRight,
   ClipboardCheck,
   CircleAlert,
   Building2,
@@ -20,13 +18,13 @@ import {
 import { supportApi } from "../supportApi";
 import { formatIxcDateTime, formatConsulted } from "../upgradesApi";
 import { useLiveQuery } from "../composables/useLiveQuery";
-import { useAuthStore } from "../stores/auth";
 import LiveQueryState from "./LiveQueryState.vue";
 import SupportCaseHistory from "./SupportCaseHistory.vue";
+import RecordQuickLink from "./RecordQuickLink.vue";
+import CustomerQuickLinks from "./CustomerQuickLinks.vue";
 import SupportCaseStatus from "./SupportCaseStatus.vue";
 const props = defineProps<{ customerId: string; kind: "orders" | "tickets"; caseId: number }>();
-const auth = useAuthStore(),
-  tab = ref<"overview" | "messages" | "movements">("overview");
+const tab = ref<"overview" | "messages" | "movements">("overview");
 const tabs = [
   { id: "overview", label: "Visão geral", icon: Info },
   { id: "messages", label: "Mensagens", icon: MessageSquareText },
@@ -173,19 +171,24 @@ function keyboard(e: KeyboardEvent) {
                 <dt class="support-case-caption">Protocolo</dt>
                 <dd class="mt-1 break-all font-mono text-[11px]">{{ record.protocol ?? "Não informado" }}</dd>
               </dl>
-              <RouterLink
-                v-if="record.contractId && auth.can('support.contract.view')"
-                class="support-case-link"
-                :to="`/support/contracts/${record.contractId}`"
-                ><FileText aria-hidden="true" />Contrato #{{ record.contractId }}<ArrowUpRight class="ml-auto" aria-hidden="true"
-              /></RouterLink>
-              <RouterLink
-                v-if="record.contractId && record.loginId && auth.can('support.contract.view') && auth.can('support.logins.view')"
-                class="support-case-link"
-                :to="{ path: `/support/contracts/${record.contractId}`, query: { tab: 'logins', loginId: String(record.loginId) } }"
-                ><Network aria-hidden="true" />Login #{{ record.loginId }}<ArrowUpRight class="ml-auto" aria-hidden="true"
-              /></RouterLink>
-              <p v-if="record.ticketId" class="mt-2 text-[11px] text-slate-500">Atendimento vinculado #{{ record.ticketId }}</p>
+              <div class="flex flex-col items-start gap-2">
+                <RecordQuickLink
+                  v-if="record.contractId"
+                  :target="{ kind: 'contract', id: record.contractId, module: 'support' }"
+                  :label="`Ver contrato #${record.contractId}`"
+                />
+                <RecordQuickLink
+                  v-if="record.contractId && record.loginId"
+                  :target="{ kind: 'login', id: record.loginId, contractId: record.contractId }"
+                  :label="`Ver login #${record.loginId}`"
+                />
+                <RecordQuickLink
+                  v-if="record.ticketId && kind === 'orders'"
+                  :target="{ kind: 'tickets', id: record.ticketId, customerId: Number(customerId) }"
+                  :label="`Ver atendimento #${record.ticketId}`"
+                />
+                <CustomerQuickLinks :customer-id="Number(customerId)" :contract-id="record.contractId ?? undefined" />
+              </div>
             </section>
           </aside>
         </div>

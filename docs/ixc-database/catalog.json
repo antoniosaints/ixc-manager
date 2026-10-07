@@ -5921,7 +5921,7 @@
       "estimatedRows": "44",
       "columnCount": 81,
       "primaryKey": ["id"],
-      "typedMap": false
+      "typedMap": true
     },
     {
       "tableName": "radpop_radio_backups",
@@ -5948,7 +5948,7 @@
       "estimatedRows": "11481",
       "columnCount": 74,
       "primaryKey": ["id"],
-      "typedMap": false
+      "typedMap": true
     },
     {
       "tableName": "radpop_radio_cliente_fibra_historico",
@@ -6146,7 +6146,7 @@
       "estimatedRows": "2303",
       "columnCount": 23,
       "primaryKey": ["id"],
-      "typedMap": false
+      "typedMap": true
     },
     {
       "tableName": "rad_caixa_ftth_tecnologia",

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, nextTick } from "vue";
+import { computed, reactive, ref, nextTick, watch } from "vue";
 import {
   Banknote,
   CalendarRange,
@@ -18,6 +18,8 @@ import {
   ListFilter,
   ChevronRight,
 } from "lucide-vue-next";
+import { useRoute, useRouter } from "vue-router";
+import { financeNavigationQuery, readFinanceNavigation, type FinanceTab } from "../financeNavigation";
 import { financeDashboard, financeOptions } from "../financeApi";
 import { useLiveQuery } from "../composables/useLiveQuery";
 import LiveQueryState from "../components/LiveQueryState.vue";
@@ -36,7 +38,19 @@ const today = () => {
   return `${get("year")}-${get("month")}-${get("day")}`;
 };
 const initial = today();
-const form = reactive({ from: `${initial.slice(0, 7)}-01`, to: initial, branchId: "", accountId: "", regime: "all" });
+const route = useRoute(),
+  router = useRouter();
+const isList = computed(() => route.meta.financeView === "list");
+const defaults = {
+  from: `${initial.slice(0, 7)}-01`,
+  to: initial,
+  branchId: "",
+  accountId: "",
+  regime: "all",
+  receivableScope: "active",
+};
+const initialNavigation = readFinanceNavigation(route.query, defaults);
+const form = reactive(initialNavigation.filters);
 const applied = ref({ ...form }),
   validation = ref("");
 const params = computed(() => new URLSearchParams(Object.entries(applied.value).filter(([, value]) => value)));
@@ -50,30 +64,82 @@ const accountChoices = computed(() => {
     (a, b) => a.classification.localeCompare(b.classification, "pt-BR") || a.name.localeCompare(b.name, "pt-BR")
   );
 });
-const tab = ref<"accounts" | "series" | "ledger" | "banks" | "pending">("accounts"),
-  type = ref("all"),
-  accountSearch = ref(""),
+const tab = ref<FinanceTab>(initialNavigation.selection.tab),
+  type = ref(initialNavigation.selection.type),
+  accountSearch = ref(initialNavigation.selection.accountSearch),
   tablePage = ref(1);
 const tableLimit = ref(10);
 const detailPanel = ref<HTMLElement>();
-const activePending = ref({ kind: "receivable", scope: "aging", bucket: "all" });
-const pendingSelection = ref({ kind: "receivable", scope: "aging", bucket: "all", search: "", searchBy: "name", sort: "oldest" });
+const activePending = ref(initialNavigation.selection.pending);
+const pendingSelection = ref(initialNavigation.selection.pending);
 const pendingSession = ref(0);
-async function openPending(kind = "receivable", scope = "aging", bucket = "all") {
-  pendingSelection.value = { kind, scope, bucket, search: "", searchBy: "name", sort: "oldest" };
-  pendingSession.value++;
-  activePending.value = { kind, scope, bucket };
-  tab.value = "pending";
+async function changeReceivableScope(value: string) {
+  if (value !== "active" && value !== "all") return;
+  form.receivableScope = value;
+  applied.value = { ...applied.value, receivableScope: value };
+  await reload();
   await nextTick();
   detailPanel.value?.scrollIntoView({ behavior: "smooth", block: "start" });
+  detailPanel.value?.querySelector<HTMLSelectElement>("#finance-pending-receivable-scope")?.focus({ preventScroll: true });
+}
+const navigationQuery = computed(() =>
+  financeNavigationQuery(applied.value, {
+    tab: tab.value,
+    type: type.value,
+    accountSearch: accountSearch.value,
+    pending: pendingSelection.value,
+  })
+);
+// Keep both submenus on the same applied filters; history and direct links restore the selected list.
+watch(
+  () => route.query,
+  (query) => {
+    if (route.meta.module !== "finance") return;
+    const next = readFinanceNavigation(query, defaults);
+    if (JSON.stringify(next.filters) !== JSON.stringify(applied.value)) {
+      Object.assign(form, next.filters);
+      applied.value = next.filters;
+      tablePage.value = 1;
+      void reload();
+    }
+    tab.value = next.selection.tab;
+    type.value = next.selection.type;
+    accountSearch.value = next.selection.accountSearch;
+    if (JSON.stringify(next.selection.pending) !== JSON.stringify(pendingSelection.value)) {
+      pendingSelection.value = next.selection.pending;
+      activePending.value = next.selection.pending;
+      pendingSession.value++;
+    }
+    tablePage.value = 1;
+  }
+);
+watch(
+  navigationQuery,
+  (query) => {
+    if (route.meta.module !== "finance") return;
+    const current = Object.fromEntries(Object.entries(route.query).filter(([, value]) => value !== ""));
+    if (Object.keys(current).length !== Object.keys(query).length || Object.entries(query).some(([key, value]) => current[key] !== value))
+      void router.replace({ path: route.path, query });
+  },
+  { flush: "post" }
+);
+async function openPending(kind = "receivable", scope = "aging", bucket = "all") {
+  await router.push({
+    path: "/finance/list",
+    query: { ...navigationQuery.value, tab: "pending", kind, scope, bucket, search: "", searchBy: "name", sort: "oldest" },
+  });
+  await nextTick();
+  detailPanel.value?.scrollIntoView({ block: "start" });
 }
 async function showAccounts(kind = "all", name = "") {
-  tab.value = "accounts";
-  type.value = kind;
-  accountSearch.value = name;
-  tablePage.value = 1;
+  await router.push({ path: "/finance/list", query: { ...navigationQuery.value, tab: "accounts", type: kind, accountSearch: name } });
   await nextTick();
-  detailPanel.value?.scrollIntoView({ behavior: "smooth", block: "start" });
+  detailPanel.value?.scrollIntoView({ block: "start" });
+}
+function selectTab(value: FinanceTab) {
+  tab.value = value;
+  if (value === "accounts" || value === "ledger") type.value = "all";
+  tablePage.value = 1;
 }
 const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const date = (value: string) =>
@@ -134,9 +200,17 @@ function preset(kind: string) {
       <div>
         <p class="mb-1 text-[10px] font-bold uppercase tracking-[.18em] text-emerald-700">Gestão financeira</p>
         <h1 class="text-2xl font-extrabold tracking-tight">
-          <Banknote class="mr-2 inline h-5 w-5 align-middle" aria-hidden="true" focusable="false" />Painel financeiro
+          <component :is="isList ? ListFilter : Banknote" class="mr-2 inline h-5 w-5 align-middle" aria-hidden="true" focusable="false" />{{
+            isList ? "Lista financeira" : "Painel financeiro"
+          }}
         </h1>
-        <p class="mt-1 text-xs text-slate-500">Receitas, despesas e resultado das contas contábeis no período.</p>
+        <p class="mt-1 text-xs text-slate-500">
+          {{
+            isList
+              ? "Consulte contas, movimentações, bancos e títulos com os filtros da análise."
+              : "Receitas, despesas e resultado das contas contábeis no período."
+          }}
+        </p>
       </div>
       <span
         class="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700"
@@ -156,10 +230,10 @@ function preset(kind: string) {
       </div>
       <form class="flex flex-wrap items-end gap-2" @submit.prevent="apply">
         <label class="min-w-36 flex-1 text-[11px] text-slate-500"
-          >De<input v-model="form.from" type="date" class="input mt-1" required
+          >De<input v-model="form.from" type="date" class="input mt-1 !h-8 !py-1" required
         /></label>
         <label class="min-w-36 flex-1 text-[11px] text-slate-500"
-          >Até<input v-model="form.to" type="date" class="input mt-1" required
+          >Até<input v-model="form.to" type="date" class="input mt-1 !h-8 !py-1" required
         /></label>
         <label class="min-w-32 flex-1 text-[11px] text-slate-500"
           >Filial<select v-model="form.branchId" class="input mt-1">
@@ -185,6 +259,12 @@ function preset(kind: string) {
             <option value="manual">Manual</option>
           </select></label
         >
+        <label class="min-w-36 flex-1 text-[11px] text-slate-500"
+          >Clientes / contratos<select v-model="form.receivableScope" class="input mt-1">
+            <option value="active">Somente ativos</option>
+            <option value="all">Todos</option>
+          </select></label
+        >
         <button type="submit" class="button-primary" :disabled="loading">
           <Search class="h-3.5 w-3.5" aria-hidden="true" focusable="false" />Consultar
         </button>
@@ -201,6 +281,9 @@ function preset(kind: string) {
           Todas as contas e filiais
         </button>
       </form>
+      <p class="mt-2 text-[10px] text-slate-500">
+        Clientes / contratos filtra os recebíveis e a inadimplência. “Todos” inclui inativos, cancelados e títulos sem contrato.
+      </p>
       <p v-if="optionsError || options?.truncated" role="alert" class="mt-2 text-xs text-amber-700">
         {{
           optionsError
@@ -227,195 +310,200 @@ function preset(kind: string) {
         {{ date(data.period.from) }} a {{ date(data.period.to) }} · Comparação: {{ date(data.previous.from) }} a
         {{ date(data.previous.to) }} (mesma quantidade de dias) · {{ regimeLabel(data.regime) }}.
       </p>
-      <div class="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <section class="panel px-3 py-3">
-          <h2 class="mb-1 text-[11px] font-medium text-slate-500">
-            <TrendingUp class="mr-1 inline h-4 w-4 text-emerald-700" aria-hidden="true" focusable="false" />Receitas líquidas
-          </h2>
-          <button type="button" class="text-xl font-bold hover:underline" aria-label="Ver contas de receitas" @click="showAccounts('R')">
-            {{ money(data.totals.revenue) }}
-          </button>
-          <p class="mt-1 text-[10px] text-slate-500">{{ percent(data.growth.revenue) }}</p>
-        </section>
-        <section class="panel px-3 py-3">
-          <h2 class="mb-1 text-[11px] font-medium text-slate-500">
-            <TrendingDown class="mr-1 inline h-4 w-4 text-red-600" aria-hidden="true" focusable="false" />Despesas líquidas
-          </h2>
-          <button type="button" class="text-xl font-bold hover:underline" aria-label="Ver contas de despesas" @click="showAccounts('D')">
-            {{ money(data.totals.expense) }}
-          </button>
-          <p class="mt-1 text-[10px] text-slate-500">{{ percent(data.growth.expense) }}</p>
-        </section>
-        <section class="panel px-3 py-3">
-          <h2 class="mb-1 text-[11px] font-medium text-slate-500">
-            <Scale class="mr-1 inline h-4 w-4" aria-hidden="true" focusable="false" />Resultado do período
-          </h2>
-          <strong class="text-xl" :class="data.totals.result >= 0 ? 'text-emerald-700' : 'text-red-600'">{{
-            money(data.totals.result)
-          }}</strong>
-          <p class="mt-1 text-[10px] text-slate-500">
-            Variação de {{ money(data.growth.resultDifference) }} · Margem
-            {{ data.totals.margin === null ? "—" : `${data.totals.margin.toLocaleString("pt-BR")}%` }}
-          </p>
-        </section>
-        <section class="panel px-3 py-3">
-          <h2 class="mb-1 text-[11px] font-medium text-slate-500">
-            <Wallet class="mr-1 inline h-4 w-4" aria-hidden="true" focusable="false" />Em aberto por vencimento
-          </h2>
-          <div class="flex justify-between gap-2 text-xs">
-            <span>A receber</span
-            ><button
-              type="button"
-              class="font-bold hover:underline"
-              :disabled="!data.receivable"
-              aria-label="Listar títulos a receber em aberto no período"
-              @click="openPending('receivable', 'period')"
-            >
-              {{ data.receivable ? money(data.receivable.total) : "Indisponível" }}
+      <template v-if="!isList">
+        <div class="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <section class="panel px-3 py-3">
+            <h2 class="mb-1 text-[11px] font-medium text-slate-500">
+              <TrendingUp class="mr-1 inline h-4 w-4 text-emerald-700" aria-hidden="true" focusable="false" />Receitas líquidas
+            </h2>
+            <button type="button" class="text-xl font-bold hover:underline" aria-label="Ver contas de receitas" @click="showAccounts('R')">
+              {{ money(data.totals.revenue) }}
             </button>
-          </div>
-          <div class="mt-1 flex justify-between gap-2 text-xs">
-            <span>A pagar</span
-            ><button
-              type="button"
-              class="font-bold hover:underline"
-              :disabled="!data.payable"
-              aria-label="Listar títulos a pagar em aberto no período"
-              @click="openPending('payable', 'period')"
-            >
-              {{ data.payable ? money(data.payable.total) : "Indisponível" }}
+            <p class="mt-1 text-[10px] text-slate-500">{{ percent(data.growth.revenue) }}</p>
+          </section>
+          <section class="panel px-3 py-3">
+            <h2 class="mb-1 text-[11px] font-medium text-slate-500">
+              <TrendingDown class="mr-1 inline h-4 w-4 text-red-600" aria-hidden="true" focusable="false" />Despesas líquidas
+            </h2>
+            <button type="button" class="text-xl font-bold hover:underline" aria-label="Ver contas de despesas" @click="showAccounts('D')">
+              {{ money(data.totals.expense) }}
             </button>
-          </div>
-          <p class="mt-1 text-[10px] text-slate-500">
-            Vencidos: receber {{ data.receivable ? money(data.receivable.overdue) : "—" }} · pagar
-            {{ data.payable ? money(data.payable.overdue) : "—" }}
-          </p>
-        </section>
-      </div>
-      <div class="mb-3 grid gap-3 xl:grid-cols-[2fr_1fr]">
-        <section class="panel px-3 py-3">
-          <div class="mb-2 flex flex-wrap items-center justify-between gap-1.5">
-            <h2 class="text-sm font-bold"><Clock3 class="mr-1.5 inline h-4 w-4" aria-hidden="true" />Inadimplência atual</h2>
-            <button
-              v-if="data.aging"
-              type="button"
-              class="text-sm font-bold text-red-600 hover:underline"
-              aria-label="Listar toda a inadimplência atual"
-              @click="openPending()"
-            >
-              {{ money(data.aging.total) }}
-              <span class="text-[10px] font-normal text-slate-500">· {{ data.aging.count.toLocaleString("pt-BR") }} títulos</span>
-            </button>
-          </div>
-          <div v-if="data.aging" class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <button
-              v-for="bucket in data.aging.buckets"
-              :key="bucket.key"
-              type="button"
-              class="rounded-lg border px-2 py-2 text-left hover:bg-emerald-50 focus-visible:ring-2 focus-visible:ring-emerald-600"
-              :class="
-                tab === 'pending' &&
-                activePending.kind === 'receivable' &&
-                activePending.scope === 'aging' &&
-                activePending.bucket === bucket.key
-                  ? 'border-emerald-600 bg-emerald-50'
-                  : 'border-transparent bg-slate-50'
-              "
-              :aria-pressed="
-                tab === 'pending' &&
-                activePending.kind === 'receivable' &&
-                activePending.scope === 'aging' &&
-                activePending.bucket === bucket.key
-              "
-              :aria-label="`Listar títulos com ${bucket.key === '91+' ? 'mais de 90' : bucket.key} dias de atraso`"
-              @click="openPending('receivable', 'aging', bucket.key)"
-            >
-              <p class="text-[10px] text-slate-500">{{ bucket.key === "91+" ? "Mais de 90" : bucket.key.replace("-", "–") }} dias</p>
-              <strong class="block text-sm">{{ money(bucket.total) }}</strong
-              ><span class="text-[10px] text-slate-500"
-                >{{ bucket.count.toLocaleString("pt-BR") }} títulos <ChevronRight class="inline h-3 w-3" aria-hidden="true"
-              /></span>
-            </button>
-          </div>
-          <p v-else class="text-xs text-slate-500">Indicador indisponível nesta consulta.</p>
-          <p v-if="data.aging" class="mt-2 text-[10px] text-slate-500">
-            Clique em uma faixa para listar as pendências. Saldos atuais vencidos antes de {{ date(data.aging.asOf) }}, incluindo
-            vencimentos anteriores ao período.
-            {{ data.aging.excludedRenegotiated ? `${data.aging.excludedRenegotiated} títulos renegociados foram separados.` : "" }}
-          </p>
-        </section>
-        <section class="panel px-3 py-3">
-          <h2 class="mb-2 text-sm font-bold"><CheckCheck class="mr-1.5 inline h-4 w-4" aria-hidden="true" />Conciliação dos lançamentos</h2>
-          <template v-if="data.reconciliation">
-            <div class="grid grid-cols-3 gap-2 text-center">
-              <div>
-                <strong class="block text-lg text-emerald-700">{{ data.reconciliation.reconciled.toLocaleString("pt-BR") }}</strong
-                ><span class="text-[10px] text-slate-500">Conciliados</span>
-              </div>
-              <div>
-                <strong class="block text-lg">{{ data.reconciliation.pending.toLocaleString("pt-BR") }}</strong
-                ><span class="text-[10px] text-slate-500">Pendentes</span>
-              </div>
-              <div>
-                <strong class="block text-lg">{{ data.reconciliation.unknown.toLocaleString("pt-BR") }}</strong
-                ><span class="text-[10px] text-slate-500">Sem informação</span>
-              </div>
-            </div>
-            <p class="mt-2 text-[10px] text-slate-500">
-              {{
-                data.reconciliation.percentage === null
-                  ? "Sem lançamentos."
-                  : `${data.reconciliation.percentage.toLocaleString("pt-BR")}% conciliados no período.`
-              }}
-              Situação cadastrada no IXC, sem conferência com o extrato bancário.
+            <p class="mt-1 text-[10px] text-slate-500">{{ percent(data.growth.expense) }}</p>
+          </section>
+          <section class="panel px-3 py-3">
+            <h2 class="mb-1 text-[11px] font-medium text-slate-500">
+              <Scale class="mr-1 inline h-4 w-4" aria-hidden="true" focusable="false" />Resultado do período
+            </h2>
+            <strong class="text-xl" :class="data.totals.result >= 0 ? 'text-emerald-700' : 'text-red-600'">{{
+              money(data.totals.result)
+            }}</strong>
+            <p class="mt-1 text-[10px] text-slate-500">
+              Variação de {{ money(data.growth.resultDifference) }} · Margem
+              {{ data.totals.margin === null ? "—" : `${data.totals.margin.toLocaleString("pt-BR")}%` }}
             </p>
-          </template>
-          <p v-else class="text-xs text-slate-500">Indicador indisponível nesta consulta.</p>
-        </section>
-      </div>
-      <div class="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-[1.5fr_1fr]">
-        <section class="panel min-w-0 p-4">
-          <h2 class="mb-1 text-sm font-bold">
-            <ChartNoAxesCombined class="mr-2 inline h-4 w-4" aria-hidden="true" focusable="false" />Evolução de receitas e despesas
-          </h2>
-          <p class="mb-3 text-[11px] text-slate-500">
-            {{ data.series[0]?.date.length === 7 ? "Agrupamento mensal" : "Agrupamento diário" }} · valores líquidos das contrapartidas de
-            estorno.
-          </p>
-          <FinanceTrend :series="data.series" />
-        </section>
-        <section class="panel min-w-0 p-4">
-          <h2 class="mb-3 text-sm font-bold">Contas com maior participação</h2>
-          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <div v-for="kind in ['R', 'D'] as const" :key="kind">
-              <h3 class="mb-2 text-xs font-semibold">
-                <ArrowUpRight
-                  v-if="kind === 'R'"
-                  class="mr-1 inline h-4 w-4 text-emerald-700"
-                  aria-hidden="true"
-                  focusable="false"
-                /><ArrowDownRight v-else class="mr-1 inline h-4 w-4 text-red-600" aria-hidden="true" focusable="false" />{{
-                  kind === "R" ? "Receitas" : "Despesas"
-                }}
-              </h3>
-              <ol class="space-y-2">
-                <li v-for="(account, index) in ranked(kind)" :key="account.id" class="flex items-center justify-between gap-2 text-xs">
-                  <button
-                    type="button"
-                    class="min-w-0 truncate text-left hover:underline"
-                    :title="account.name"
-                    @click="showAccounts(kind, account.name)"
-                  >
-                    {{ index + 1 }}. {{ account.name }}</button
-                  ><strong class="shrink-0">{{ money(account.value) }}</strong>
-                </li>
-              </ol>
-              <p v-if="!ranked(kind).length" class="text-xs text-slate-500">Sem lançamentos classificados no período.</p>
+          </section>
+          <section class="panel px-3 py-3">
+            <h2 class="mb-1 text-[11px] font-medium text-slate-500">
+              <Wallet class="mr-1 inline h-4 w-4" aria-hidden="true" focusable="false" />Em aberto por vencimento
+            </h2>
+            <div class="flex justify-between gap-2 text-xs">
+              <span>A receber</span
+              ><button
+                type="button"
+                class="font-bold hover:underline"
+                :disabled="!data.receivable"
+                aria-label="Listar títulos a receber em aberto no período"
+                @click="openPending('receivable', 'period')"
+              >
+                {{ data.receivable ? money(data.receivable.total) : "Indisponível" }}
+              </button>
             </div>
-          </div>
-        </section>
-      </div>
-      <section ref="detailPanel" class="panel scroll-mt-4 overflow-hidden">
+            <div class="mt-1 flex justify-between gap-2 text-xs">
+              <span>A pagar</span
+              ><button
+                type="button"
+                class="font-bold hover:underline"
+                :disabled="!data.payable"
+                aria-label="Listar títulos a pagar em aberto no período"
+                @click="openPending('payable', 'period')"
+              >
+                {{ data.payable ? money(data.payable.total) : "Indisponível" }}
+              </button>
+            </div>
+            <p class="mt-1 text-[10px] text-slate-500">
+              Vencidos: receber {{ data.receivable ? money(data.receivable.overdue) : "—" }} · pagar
+              {{ data.payable ? money(data.payable.overdue) : "—" }}
+            </p>
+          </section>
+        </div>
+        <div class="mb-3 grid gap-3 xl:grid-cols-[2fr_1fr]">
+          <section class="panel px-3 py-3">
+            <div class="mb-2 flex flex-wrap items-center justify-between gap-1.5">
+              <h2 class="text-sm font-bold"><Clock3 class="mr-1.5 inline h-4 w-4" aria-hidden="true" />Inadimplência atual</h2>
+              <button
+                v-if="data.aging"
+                type="button"
+                class="text-sm font-bold text-red-600 hover:underline"
+                aria-label="Listar toda a inadimplência atual"
+                @click="openPending()"
+              >
+                {{ money(data.aging.total) }}
+                <span class="text-[10px] font-normal text-slate-500">· {{ data.aging.count.toLocaleString("pt-BR") }} títulos</span>
+              </button>
+            </div>
+            <div v-if="data.aging" class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <button
+                v-for="bucket in data.aging.buckets"
+                :key="bucket.key"
+                type="button"
+                class="rounded-lg border px-2 py-2 text-left hover:bg-emerald-50 focus-visible:ring-2 focus-visible:ring-emerald-600"
+                :class="
+                  tab === 'pending' &&
+                  activePending.kind === 'receivable' &&
+                  activePending.scope === 'aging' &&
+                  activePending.bucket === bucket.key
+                    ? 'border-emerald-600 bg-emerald-50'
+                    : 'border-transparent bg-slate-50'
+                "
+                :aria-pressed="
+                  tab === 'pending' &&
+                  activePending.kind === 'receivable' &&
+                  activePending.scope === 'aging' &&
+                  activePending.bucket === bucket.key
+                "
+                :aria-label="`Listar títulos com ${bucket.key === '91+' ? 'mais de 90' : bucket.key} dias de atraso`"
+                @click="openPending('receivable', 'aging', bucket.key)"
+              >
+                <p class="text-[10px] text-slate-500">{{ bucket.key === "91+" ? "Mais de 90" : bucket.key.replace("-", "–") }} dias</p>
+                <strong class="block text-sm">{{ money(bucket.total) }}</strong
+                ><span class="text-[10px] text-slate-500"
+                  >{{ bucket.count.toLocaleString("pt-BR") }} títulos <ChevronRight class="inline h-3 w-3" aria-hidden="true"
+                /></span>
+              </button>
+            </div>
+            <p v-else class="text-xs text-slate-500">Indicador indisponível nesta consulta.</p>
+            <p v-if="data.aging" class="mt-2 text-[10px] text-slate-500">
+              {{ data.receivableScope === "all" ? "Todos os clientes e contratos." : "Somente clientes e contratos ativos." }}
+              Clique em uma faixa para listar as pendências. Saldos atuais vencidos antes de {{ date(data.aging.asOf) }}, incluindo
+              vencimentos anteriores ao período.
+              {{ data.aging.excludedRenegotiated ? `${data.aging.excludedRenegotiated} títulos renegociados foram separados.` : "" }}
+            </p>
+          </section>
+          <section class="panel px-3 py-3">
+            <h2 class="mb-2 text-sm font-bold">
+              <CheckCheck class="mr-1.5 inline h-4 w-4" aria-hidden="true" />Conciliação dos lançamentos
+            </h2>
+            <template v-if="data.reconciliation">
+              <div class="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <strong class="block text-lg text-emerald-700">{{ data.reconciliation.reconciled.toLocaleString("pt-BR") }}</strong
+                  ><span class="text-[10px] text-slate-500">Conciliados</span>
+                </div>
+                <div>
+                  <strong class="block text-lg">{{ data.reconciliation.pending.toLocaleString("pt-BR") }}</strong
+                  ><span class="text-[10px] text-slate-500">Pendentes</span>
+                </div>
+                <div>
+                  <strong class="block text-lg">{{ data.reconciliation.unknown.toLocaleString("pt-BR") }}</strong
+                  ><span class="text-[10px] text-slate-500">Sem informação</span>
+                </div>
+              </div>
+              <p class="mt-2 text-[10px] text-slate-500">
+                {{
+                  data.reconciliation.percentage === null
+                    ? "Sem lançamentos."
+                    : `${data.reconciliation.percentage.toLocaleString("pt-BR")}% conciliados no período.`
+                }}
+                Situação cadastrada no IXC, sem conferência com o extrato bancário.
+              </p>
+            </template>
+            <p v-else class="text-xs text-slate-500">Indicador indisponível nesta consulta.</p>
+          </section>
+        </div>
+        <div class="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-[1.5fr_1fr]">
+          <section class="panel min-w-0 p-4">
+            <h2 class="mb-1 text-sm font-bold">
+              <ChartNoAxesCombined class="mr-2 inline h-4 w-4" aria-hidden="true" focusable="false" />Evolução de receitas e despesas
+            </h2>
+            <p class="mb-3 text-[11px] text-slate-500">
+              {{ data.series[0]?.date.length === 7 ? "Agrupamento mensal" : "Agrupamento diário" }} · valores líquidos das contrapartidas de
+              estorno.
+            </p>
+            <FinanceTrend :series="data.series" />
+          </section>
+          <section class="panel min-w-0 p-4">
+            <h2 class="mb-3 text-sm font-bold">Contas com maior participação</h2>
+            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+              <div v-for="kind in ['R', 'D'] as const" :key="kind">
+                <h3 class="mb-2 text-xs font-semibold">
+                  <ArrowUpRight
+                    v-if="kind === 'R'"
+                    class="mr-1 inline h-4 w-4 text-emerald-700"
+                    aria-hidden="true"
+                    focusable="false"
+                  /><ArrowDownRight v-else class="mr-1 inline h-4 w-4 text-red-600" aria-hidden="true" focusable="false" />{{
+                    kind === "R" ? "Receitas" : "Despesas"
+                  }}
+                </h3>
+                <ol class="space-y-2">
+                  <li v-for="(account, index) in ranked(kind)" :key="account.id" class="flex items-center justify-between gap-2 text-xs">
+                    <button
+                      type="button"
+                      class="min-w-0 truncate text-left hover:underline"
+                      :title="account.name"
+                      @click="showAccounts(kind, account.name)"
+                    >
+                      {{ index + 1 }}. {{ account.name }}</button
+                    ><strong class="shrink-0">{{ money(account.value) }}</strong>
+                  </li>
+                </ol>
+                <p v-if="!ranked(kind).length" class="text-xs text-slate-500">Sem lançamentos classificados no período.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </template>
+      <section v-else ref="detailPanel" class="panel scroll-mt-4 overflow-hidden">
         <div class="border-b border-slate-100 px-4 py-3">
           <div class="mb-3 flex flex-wrap gap-2" role="group" aria-label="Visão dos dados financeiros">
             <button
@@ -423,11 +511,7 @@ function preset(kind: string) {
               class="button-secondary"
               :aria-pressed="tab === 'accounts'"
               :class="tab === 'accounts' ? 'finance-nav-active' : ''"
-              @click="
-                tab = 'accounts';
-                type = 'all';
-                tablePage = 1;
-              "
+              @click="selectTab('accounts')"
             >
               Resultado por conta</button
             ><button
@@ -435,10 +519,7 @@ function preset(kind: string) {
               class="button-secondary"
               :aria-pressed="tab === 'series'"
               :class="tab === 'series' ? 'finance-nav-active' : ''"
-              @click="
-                tab = 'series';
-                tablePage = 1;
-              "
+              @click="selectTab('series')"
             >
               Evolução por período</button
             ><button
@@ -446,11 +527,7 @@ function preset(kind: string) {
               class="button-secondary"
               :aria-pressed="tab === 'ledger'"
               :class="tab === 'ledger' ? 'finance-nav-active' : ''"
-              @click="
-                tab = 'ledger';
-                type = 'all';
-                tablePage = 1;
-              "
+              @click="selectTab('ledger')"
             >
               Movimentação contábil</button
             ><button
@@ -458,10 +535,7 @@ function preset(kind: string) {
               class="button-secondary"
               :aria-pressed="tab === 'banks'"
               :class="tab === 'banks' ? 'finance-nav-active' : ''"
-              @click="
-                tab = 'banks';
-                tablePage = 1;
-              "
+              @click="selectTab('banks')"
             >
               <Landmark class="h-3.5 w-3.5" aria-hidden="true" />Caixa e bancos
             </button>
@@ -499,6 +573,7 @@ function preset(kind: string) {
           :key="pendingSession"
           :params="params"
           v-bind="pendingSelection"
+          @receivable-scope="changeReceivableScope"
           @selection="
             pendingSelection = $event;
             activePending = $event;

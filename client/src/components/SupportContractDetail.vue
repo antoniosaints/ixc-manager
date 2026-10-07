@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { FileText, Network, Package, RefreshCw, ArrowUpRight } from "lucide-vue-next";
+import CustomerQuickLinks from "./CustomerQuickLinks.vue";
+import { upgradesApi } from "../upgradesApi";
 import { supportApi } from "../supportApi";
 import { formatConsulted } from "../upgradesApi";
 import { useAuthStore } from "../stores/auth";
@@ -9,15 +11,20 @@ import ContractOverview from "./ContractOverview.vue";
 import ContractLogins from "./ContractLogins.vue";
 import SupportComodato from "./SupportComodato.vue";
 import LiveQueryState from "./LiveQueryState.vue";
-const props = defineProps<{ contractId: string }>();
+const props = withDefaults(defineProps<{ contractId: string; module?: "support" | "upgrades" }>(), { module: "support" });
 const auth = useAuthStore(),
   tab = ref("overview");
-const { data, loading, error, reload } = useLiveQuery((signal) => supportApi.contract(props.contractId, signal));
+const { data, loading, error, reload } = useLiveQuery((signal) =>
+  (props.module === "support" ? supportApi : upgradesApi).contract(props.contractId, signal)
+);
 const tabs = computed(() => [
   { id: "overview", label: "Visão geral", icon: FileText },
-  ...(auth.can("support.logins.view") ? [{ id: "logins", label: "Logins", icon: Network }] : []),
-  ...(auth.can("support.comodato.view") ? [{ id: "comodato", label: "Comodatos", icon: Package }] : []),
+  ...(props.module === "support" && auth.can("support.logins.view") ? [{ id: "logins", label: "Logins", icon: Network }] : []),
+  ...(props.module === "support" && auth.can("support.comodato.view") ? [{ id: "comodato", label: "Comodatos", icon: Package }] : []),
 ]);
+watch(tabs, (value) => {
+  if (!value.some((item) => item.id === tab.value)) tab.value = "overview";
+});
 function keyboard(e: KeyboardEvent) {
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
   e.preventDefault();
@@ -54,11 +61,12 @@ function keyboard(e: KeyboardEvent) {
       <div class="flex flex-wrap gap-2">
         <button type="button" class="button-secondary" :disabled="loading" @click="reload">
           <RefreshCw aria-hidden="true" />Atualizar contrato</button
-        ><RouterLink :to="`/support/contracts/${contractId}`" class="button-secondary"
+        ><RouterLink :to="`/${module}/contracts/${contractId}`" class="button-secondary"
           >Abrir contrato<ArrowUpRight aria-hidden="true"
         /></RouterLink>
       </div>
     </div>
+    <CustomerQuickLinks v-if="data" class="mb-3" :customer-id="data.contract.customerId" :contract-id="Number(contractId)" />
     <div :id="`contract-panel-${contractId}`" role="tabpanel" :aria-labelledby="`contract-${contractId}-${tab}`" tabindex="0">
       <template v-if="tab === 'overview'"
         ><LiveQueryState :loading="loading" :error="error" @retry="reload" /><ContractOverview

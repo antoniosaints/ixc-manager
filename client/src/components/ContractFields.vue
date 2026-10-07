@@ -23,7 +23,9 @@ const icons: Record<string, Component> = {
     <dl class="grid gap-x-4 gap-y-2 text-xs" :class="columns === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'">
       <div v-for="field in fields" :key="field.label" class="min-w-0">
         <dt class="support-case-caption">{{ field.label }}</dt>
-        <dd class="mt-0.5 break-words font-medium">{{ field.value ?? "Não informado" }}</dd>
+        <dd class="mt-0.5 break-words font-medium">
+          <slot name="field" :field="field">{{ field.value ?? "Não informado" }}</slot>
+        </dd>
       </div>
     </dl>
   </section>

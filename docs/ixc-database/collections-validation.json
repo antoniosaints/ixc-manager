@@ -1,0 +1,121 @@
+{
+  "validatedOn": "2026-10-07",
+  "timezone": "America/Sao_Paulo",
+  "readOnly": true,
+  "customerRecordsPrinted": false,
+  "financialValuesRecorded": false,
+  "validationDurationMs": 3554,
+  "comparisonUsesSameSnapshot": true,
+  "activeContractBaseline": [
+    {
+      "status": "all",
+      "customers": true,
+      "titles": true,
+      "balance": true
+    },
+    {
+      "status": "all",
+      "bucket": "1-30",
+      "customers": true,
+      "balance": true
+    },
+    {
+      "status": "all",
+      "bucket": "31-60",
+      "customers": true,
+      "balance": true
+    },
+    {
+      "status": "all",
+      "bucket": "61-90",
+      "customers": true,
+      "balance": true
+    },
+    {
+      "status": "all",
+      "bucket": "91+",
+      "customers": true,
+      "balance": true
+    },
+    {
+      "status": "active",
+      "customers": true,
+      "titles": true,
+      "balance": true
+    },
+    {
+      "status": "active",
+      "bucket": "1-30",
+      "customers": true,
+      "balance": true
+    },
+    {
+      "status": "active",
+      "bucket": "31-60",
+      "customers": true,
+      "balance": true
+    },
+    {
+      "status": "active",
+      "bucket": "61-90",
+      "customers": true,
+      "balance": true
+    },
+    {
+      "status": "active",
+      "bucket": "91+",
+      "customers": true,
+      "balance": true
+    },
+    {
+      "status": "inactive",
+      "customers": true,
+      "titles": true,
+      "balance": true
+    },
+    {
+      "status": "inactive",
+      "bucket": "1-30",
+      "customers": true,
+      "balance": true
+    },
+    {
+      "status": "inactive",
+      "bucket": "31-60",
+      "customers": true,
+      "balance": true
+    },
+    {
+      "status": "inactive",
+      "bucket": "61-90",
+      "customers": true,
+      "balance": true
+    },
+    {
+      "status": "inactive",
+      "bucket": "91+",
+      "customers": true,
+      "balance": true
+    }
+  ],
+  "customer515": {
+    "apiAndMysqlMatch": true,
+    "titlesHaveNoContractId": true,
+    "removedFromList": true,
+    "excludedBalanceZero": true,
+    "detailsExcluded": true,
+    "pdfSelectionExcluded": true
+  },
+  "detailsScopedToCustomer": true,
+  "detailTitleCountMatchesCustomer": true,
+  "titleBranchAndAccountFiltersMatch": true,
+  "pdfFreshDistributionUnique": true,
+  "qualityWarningCount": 0,
+  "lookupOptions": {
+    "branches": 11,
+    "accounts": 1
+  },
+  "indexesUsed": ["city.PRIMARY", "<derived3>.key0", "t.status", "c.PRIMARY", "eligible_contract.PRIMARY"],
+  "indexesCreated": false,
+  "writes": false
+}

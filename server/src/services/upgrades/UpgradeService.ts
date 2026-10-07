@@ -1,5 +1,7 @@
 import { contractExtras, equipmentTarget, loginDetails, secretFields, type SecretField } from "./UpgradeDetails.js";
 import { IxcApiService, type IxcListRequest } from "../../integrations/ixc/IxcApiService.js";
+import { LoginNetworkService } from "./LoginNetworkService.js";
+import { LoginSignalService } from "./LoginSignalService.js";
 
 type Row = Record<string, unknown>;
 type Reader = Pick<IxcApiService, "listPage">;
@@ -85,8 +87,15 @@ export class UpgradeService {
   constructor(
     private readonly ixc: Reader = new IxcApiService({ timeout: 10_000, attempts: 2 }),
     private readonly now: () => Date = () => new Date(),
-    private readonly options: { activeOnly?: boolean } = {}
+    private readonly options: { activeOnly?: boolean } = {},
+    private readonly network = new LoginNetworkService(),
+    private readonly signals = new LoginSignalService(undefined, ixc, now)
   ) {}
+
+  async close() {
+    await this.network.close();
+    await this.signals.close();
+  }
 
   private async read(endpoint: string, request: IxcListRequest, page = 1) {
     try {
@@ -357,7 +366,7 @@ export class UpgradeService {
     );
     if (owned.length !== rows.length) throw fail("O IXC retornou logins que não correspondem a este contrato. Atualize a consulta.", 502);
     return {
-      items: owned.map((row) => loginDetails(row, allowAccess)),
+      items: await this.network.enrich(owned.map((row) => loginDetails(row, allowAccess))),
       total,
       page: query.page,
       limit: query.limit,
@@ -384,7 +393,12 @@ export class UpgradeService {
     return row;
   }
   async login(id: number, loginId: number, allowAccess = false) {
-    return { login: loginDetails(await this.loginRow(id, loginId), allowAccess), queriedAt: this.now().toISOString() };
+    const [login] = await this.network.enrich([loginDetails(await this.loginRow(id, loginId), allowAccess)]);
+    return { login, queriedAt: this.now().toISOString() };
+  }
+  async loginSignal(id: number, loginId: number) {
+    const row = await this.loginRow(id, loginId);
+    return this.signals.read({ loginId, contractId: id, customerId: positiveId(row.id_cliente)! });
   }
   async loginAccess(id: number, loginId: number, protocol: "http" | "https", port: 80 | 7000 | 7001) {
     const row = await this.loginRow(id, loginId);

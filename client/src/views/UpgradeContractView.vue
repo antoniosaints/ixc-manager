@@ -1,19 +1,7 @@
 <script setup lang="ts">
+import CustomerQuickLinks from "../components/CustomerQuickLinks.vue";
 import { toast } from "../notifications/toast";
-import {
-  FileText,
-  Network,
-  Router,
-  UserRound,
-  ArrowLeft,
-  ArrowUpRight,
-  Copy,
-  Phone,
-  RefreshCw,
-  LayoutDashboard,
-  Package,
-  ChevronLeft,
-} from "lucide-vue-next";
+import { FileText, Network, UserRound, ArrowLeft, ArrowUpRight, Copy, Phone, RefreshCw, LayoutDashboard, Package } from "lucide-vue-next";
 
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -27,8 +15,8 @@ import LiveQueryState from "../components/LiveQueryState.vue";
 import PermanenceBadge from "../components/PermanenceBadge.vue";
 import ContractFields from "../components/ContractFields.vue";
 import ContractOverview from "../components/ContractOverview.vue";
-import LoginDetails from "../components/LoginDetails.vue";
-import LoginAccessMenu from "../components/LoginAccessMenu.vue";
+import LoginRecordList from "../components/LoginRecordList.vue";
+import LivePagination from "../components/LivePagination.vue";
 const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
@@ -39,28 +27,20 @@ const can = (permission: string) => auth.can(`${module.value}.${permission}`);
 const contractId = computed(() => String(route.params.id));
 const { data, loading, error, reload } = useLiveQuery((signal) => technicalApi.value.contract(contractId.value, signal));
 const contract = computed(() => data.value?.contract);
-const tab = ref(isSupport.value && route.query.tab === "logins" && can("logins.view") ? "logins" : "overview");
+const tab = ref(isSupport.value && ["logins", "equipment"].includes(String(route.query.tab)) && can("logins.view") ? "logins" : "overview");
 function chooseTab(id: string) {
   tab.value = id;
   if (isSupport.value)
     router.replace({ query: { ...route.query, tab: id, loginId: ["logins", "equipment"].includes(id) ? route.query.loginId : undefined } });
 }
-function chooseLogin(id: number) {
-  selectedId.value = id;
-  if (isSupport.value) router.replace({ query: { ...route.query, tab: tab.value, loginId: String(id) } });
-}
 const tabs = computed(() => [
   { id: "overview", label: "Visão geral", icon: LayoutDashboard },
   { id: "contacts", label: "Contatos", icon: Phone, count: contract.value?.contacts.length },
   ...(isSupport.value && can("comodato.view") ? [{ id: "comodato", label: "Comodatos", icon: Package }] : []),
-  ...(can("logins.view")
-    ? [
-        { id: "logins", label: "Logins", icon: Network },
-        { id: "equipment", label: "Conexão e equipamento", icon: Router },
-      ]
-    : []),
+  ...(can("logins.view") ? [{ id: "logins", label: "Logins e equipamentos", icon: Network }] : []),
 ]);
-const technical = computed(() => ["logins", "equipment"].includes(tab.value));
+const technical = computed(() => tab.value === "logins");
+const routeTab = computed(() => (route.query.tab === "equipment" ? "logins" : route.query.tab));
 const loginPage = shallowRef<LivePage<UpgradeLogin> | null>(null);
 const loginLoading = ref(false);
 const loginError = ref("");
@@ -109,7 +89,7 @@ async function loadLogins() {
     if (current === version) {
       loginPage.value = result;
       linkedLogin.value = linked;
-      selectedId.value = requested ?? result.items[0]?.id ?? null;
+      selectedId.value = requested;
     }
   } catch (reason) {
     if (current === version && !controller.signal.aborted)
@@ -119,7 +99,7 @@ async function loadLogins() {
   }
 }
 watch([contractId, module], () => {
-  tab.value = isSupport.value && route.query.tab === "logins" && can("logins.view") ? "logins" : "overview";
+  tab.value = isSupport.value && ["logins", "equipment"].includes(String(route.query.tab)) && can("logins.view") ? "logins" : "overview";
   page.value = 1;
   clearLogins();
   reload();
@@ -127,7 +107,7 @@ watch([contractId, module], () => {
 watch(data, (value) => {
   clearLogins();
   if (value && isSupport.value && typeof route.query.tab === "string")
-    tab.value = tabs.value.find((item) => item.id === route.query.tab)?.id ?? "overview";
+    tab.value = tabs.value.find((item) => item.id === routeTab.value)?.id ?? "overview";
   if (value && technical.value) loadLogins();
 });
 watch(tab, () => {
@@ -138,7 +118,7 @@ watch(
   () => {
     if (!isSupport.value) return;
     clearLogins();
-    tab.value = tabs.value.find((item) => item.id === route.query.tab)?.id ?? "overview";
+    tab.value = tabs.value.find((item) => item.id === routeTab.value)?.id ?? "overview";
     if (technical.value && contract.value) loadLogins();
   }
 );
@@ -148,11 +128,7 @@ watch(tabs, (value) => {
     tab.value = "overview";
   }
 });
-watch(page, loadLogins);
-function changeLimit() {
-  if (page.value !== 1) page.value = 1;
-  else loadLogins();
-}
+watch([page, limit], loadLogins);
 onBeforeUnmount(clearLogins);
 function switchTab(event: KeyboardEvent) {
   const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
@@ -184,7 +160,6 @@ async function copy(value: string) {
 }
 onBeforeUnmount(() => clearTimeout(copyTimer));
 const yesNo = (value: boolean | null) => (value === null ? "Não informado" : value ? "Sim" : "Não");
-const statusLabel = (value: UpgradeLogin["status"]) => ({ online: "Online", offline: "Offline", unknown: "Sem status" })[value];
 </script>
 <template>
   <RouterLink
@@ -232,6 +207,7 @@ const statusLabel = (value: UpgradeLogin["status"]) => ({ online: "Online", offl
         ><PermanenceBadge :contract="contract" />
       </div>
     </section>
+    <CustomerQuickLinks class="mb-3" :customer-id="contract.customerId" :contract-id="Number(contractId)" />
     <p
       v-if="!contract.customerAvailable"
       role="alert"
@@ -356,135 +332,40 @@ const statusLabel = (value: UpgradeLogin["status"]) => ({ online: "Online", offl
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
             <div>
               <h3 class="text-sm font-bold">
-                Logins vinculados ao contrato<span v-if="loginPage" class="ml-2 text-xs font-normal text-slate-400"
+                <Network class="mr-1.5 inline h-4 w-4" aria-hidden="true" />Logins e equipamentos<span
+                  v-if="loginPage"
+                  class="ml-2 text-xs font-normal text-slate-400"
                   >{{ loginPage.total }} encontrados</span
                 >
               </h3>
-              <p class="mt-1 text-[11px] text-slate-500">Inclui ativos e inativos. Selecione um login para consultar seus dados.</p>
+              <p class="mt-1 text-[11px] text-slate-500">Abra um login para ver a conexão, as redes Wi-Fi e os dados do equipamento.</p>
             </div>
-            <button type="button" class="button-secondary text-xs" :disabled="loginLoading" @click="loadLogins">Atualizar logins</button>
+            <button type="button" class="button-secondary text-xs" :disabled="loginLoading" @click="loadLogins">
+              <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" />Atualizar logins
+            </button>
           </div>
           <div v-if="loginLoading || loginError" class="p-4">
             <LiveQueryState :loading="loginLoading" :error="loginError" @retry="loadLogins" />
           </div>
           <template v-else-if="loginPage">
-            <div v-if="tab === 'logins'" class="overflow-x-auto">
-              <table class="w-full min-w-[650px] text-left text-xs">
-                <thead class="bg-slate-50 text-[10px] uppercase text-slate-500">
-                  <tr>
-                    <th class="px-4 py-2">Login / ID</th>
-                    <th class="px-3 py-2">Cadastro</th>
-                    <th class="px-3 py-2">Conexão</th>
-                    <th class="px-3 py-2">Autenticação</th>
-                    <th class="px-3 py-2">IP</th>
-                    <th class="px-3 py-2">MAC</th>
-                    <th v-if="can('equipment.access')" class="px-4 py-2 text-right">Acesso</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="login in loginPage.items"
-                    :key="login.id"
-                    class="border-t border-slate-100"
-                    :class="selectedId === login.id ? 'bg-violet-50' : ''"
-                  >
-                    <td class="px-4 py-2">
-                      <button
-                        type="button"
-                        :aria-pressed="selectedId === login.id"
-                        :aria-label="`Selecionar login ${login.login ?? login.id}`"
-                        class="text-left font-semibold text-violet-700 hover:underline"
-                        @click="chooseLogin(login.id)"
-                      >
-                        {{ login.login ?? "Login não informado"
-                        }}<span class="ml-1.5 text-[10px] font-normal text-slate-400">#{{ login.id }}</span>
-                      </button>
-                    </td>
-                    <td class="px-3 py-2">{{ login.active === null ? "Não informado" : login.active ? "Ativo" : "Inativo" }}</td>
-                    <td class="px-3 py-2">
-                      <span class="inline-flex items-center gap-1.5"
-                        ><span
-                          class="h-1.5 w-1.5 rounded-full"
-                          :class="
-                            login.status === 'online' ? 'bg-emerald-500' : login.status === 'offline' ? 'bg-amber-500' : 'bg-slate-400'
-                          "
-                        />{{ statusLabel(login.status) }}</span
-                      >
-                    </td>
-                    <td class="px-3 py-2">{{ login.authentication ?? "—" }}</td>
-                    <td class="whitespace-nowrap px-3 py-2 font-mono">{{ login.ip ?? "Não informado" }}</td>
-                    <td class="whitespace-nowrap px-3 py-2 font-mono">{{ login.mac ?? "—" }}</td>
-                    <td v-if="can('equipment.access')" class="px-4 py-1.5 text-right">
-                      <LoginAccessMenu
-                        :module="module"
-                        :contract-id="contractId"
-                        :login-id="login.id"
-                        :ip="login.accessTargets[0]?.ip ?? null"
-                        :password-available="login.secretAvailability.router1"
-                      />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div v-else-if="loginPage.items.length" class="flex flex-wrap items-center gap-3 px-4 py-3">
-              <label class="flex min-w-0 flex-1 items-center gap-3 text-xs text-slate-500">
-                Login
-                <select
-                  v-model.number="selectedId"
-                  class="input max-w-md"
-                  aria-label="Login para consultar equipamento"
-                  @change="selectedId && chooseLogin(selectedId)"
-                >
-                  <option v-if="linkedLogin" :value="linkedLogin.id">
-                    {{ linkedLogin.login ?? "Login não informado" }} · #{{ linkedLogin.id }} · vínculo selecionado
-                  </option>
-                  <option v-for="login in loginPage.items" :key="login.id" :value="login.id">
-                    {{ login.login ?? "Login não informado" }} · #{{ login.id }} · {{ statusLabel(login.status) }}
-                  </option>
-                </select>
-              </label>
-              <span v-if="selectedLogin" class="text-xs text-slate-500">{{
-                selectedLogin.active === null ? "Cadastro não informado" : selectedLogin.active ? "Login ativo" : "Login inativo"
-              }}</span>
-            </div>
+            <LoginRecordList
+              :items="loginPage.items"
+              :module="module"
+              :initial-login="requestedLoginId ? selectedLogin : null"
+              :initial-tab="isSupport && route.query.tab === 'equipment' ? 'equipment' : 'overview'"
+              @close="selectedId = null"
+            />
             <p v-if="!loginPage.items.length" class="px-4 py-6 text-sm text-slate-500">
               {{
                 loginPage.total ? "Não há logins nesta página. Volte à página anterior." : "Nenhum login vinculado a este contrato no IXC."
               }}
             </p>
-            <div class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5 text-[11px] text-slate-500">
-              <span>Consultado em {{ formatConsulted(loginPage.queriedAt) }} · Brasília</span>
-              <div class="flex items-center gap-2">
-                <select
-                  v-model.number="limit"
-                  aria-label="Logins por página"
-                  class="rounded-md border border-slate-200 bg-white px-2 py-1"
-                  @change="changeLimit"
-                >
-                  <option :value="10">10 por página</option>
-                  <option :value="25">25 por página</option></select
-                ><span>Página {{ page }} de {{ Math.max(1, Math.ceil(loginPage.total / limit)) }}</span
-                ><button type="button" class="button-secondary text-[11px]" :disabled="page === 1" @click="page--">
-                  <ChevronLeft class="inline h-3.5 w-3.5 shrink-0 align-middle" aria-hidden="true" focusable="false" /> Anterior</button
-                ><button type="button" class="button-secondary text-[11px]" :disabled="page * limit >= loginPage.total" @click="page++">
-                  Próxima
-                </button>
-              </div>
-            </div>
+            <LivePagination v-model:page="page" v-model:limit="limit" :total="loginPage.total" :queried-at="loginPage.queriedAt" />
           </template>
         </section>
         <p v-if="linkedLogin" class="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
           O login selecionado está em outra página da listagem. Seus vínculos com este cliente e contrato foram validados no IXC.
         </p>
-        <LoginDetails
-          v-if="selectedLogin"
-          :key="`${module}-${contractId}-${selectedLogin.id}-${tab}`"
-          :module="module"
-          :contract-id="contractId"
-          :login="selectedLogin"
-          :initial-tab="tab === 'equipment' ? 'equipment' : 'overview'"
-        />
       </template>
     </section>
     <p role="status" aria-live="polite" class="mt-3 text-xs text-slate-500">{{ copied }}</p>
