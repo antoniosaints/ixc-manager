@@ -1,0 +1,113 @@
+{
+  "checkedAt": "2026-10-06T19:57:50.994Z",
+  "checks": [
+    {
+      "area": "aging-list",
+      "bucket": "all",
+      "ms": 175,
+      "records": 5424,
+      "pageItems": 10,
+      "countMatchesCard": true,
+      "balanceMatchesCard": true
+    },
+    {
+      "area": "aging-list",
+      "bucket": "1-30",
+      "ms": 88,
+      "records": 1334,
+      "pageItems": 10,
+      "countMatchesCard": true,
+      "balanceMatchesCard": true
+    },
+    {
+      "area": "aging-list",
+      "bucket": "31-60",
+      "ms": 83,
+      "records": 477,
+      "pageItems": 10,
+      "countMatchesCard": true,
+      "balanceMatchesCard": true
+    },
+    {
+      "area": "aging-list",
+      "bucket": "61-90",
+      "ms": 103,
+      "records": 305,
+      "pageItems": 10,
+      "countMatchesCard": true,
+      "balanceMatchesCard": true
+    },
+    {
+      "area": "aging-list",
+      "bucket": "91+",
+      "ms": 126,
+      "records": 3308,
+      "pageItems": 10,
+      "countMatchesCard": true,
+      "balanceMatchesCard": true
+    },
+    {
+      "area": "period-pending-list",
+      "kind": "receivable",
+      "ms": 63,
+      "records": 1967,
+      "countMatchesCard": true,
+      "balanceMatchesCard": true
+    },
+    {
+      "area": "period-pending-list",
+      "kind": "payable",
+      "ms": 45,
+      "records": 70,
+      "countMatchesCard": true,
+      "balanceMatchesCard": true
+    },
+    {
+      "area": "support-case",
+      "kind": "orders",
+      "section": "messages",
+      "ms": 105,
+      "records": 1,
+      "pageItems": 1,
+      "subjectAvailable": true,
+      "source": "order-interactions"
+    },
+    {
+      "area": "support-case",
+      "kind": "orders",
+      "section": "movements",
+      "ms": 161,
+      "records": 0,
+      "pageItems": 0,
+      "subjectAvailable": true,
+      "source": "inventory"
+    },
+    {
+      "area": "support-case",
+      "kind": "tickets",
+      "section": "messages",
+      "ms": 75,
+      "records": 1,
+      "pageItems": 1,
+      "subjectAvailable": true,
+      "source": "ticket-interactions"
+    },
+    {
+      "area": "support-case",
+      "kind": "tickets",
+      "section": "movements",
+      "ms": 125,
+      "records": 1,
+      "pageItems": 1,
+      "subjectAvailable": true,
+      "source": "ticket-interactions"
+    },
+    {
+      "area": "finance-options",
+      "ms": 99,
+      "branches": 11,
+      "accounts": 303,
+      "truncated": false
+    }
+  ]
+}

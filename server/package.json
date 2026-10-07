@@ -1,0 +1,33 @@
+{
+  "name": "@retencao-cas/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "ixc:maps": "node --import tsx src/scripts/generateIxcMaps.ts",
+    "ixc:schema": "node --import tsx src/scripts/inspectIxcDatabase.ts",
+    "ixc:validate": "node --import tsx src/scripts/validateIxcDatabase.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.0",
+    "axios": "^1.8.4",
+    "bullmq": "^5.40.2",
+    "dotenv": "^16.5.0",
+    "fastify": "^5.3.0",
+    "mysql2": "^3.14.0",
+    "pdfkit": "^0.20.2",
+    "pino": "^9.6.0",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/pdfkit": "^0.17.6",
+    "pdf-lib": "^1.17.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}

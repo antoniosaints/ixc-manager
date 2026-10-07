@@ -1,0 +1,63 @@
+{
+  "checkedAt": "2026-10-06T19:32:04.098Z",
+  "checks": [
+    {
+      "params": {
+        "from": "2026-10-01",
+        "to": "2026-10-06",
+        "regime": "all"
+      },
+      "status": 200,
+      "ms": 543,
+      "noStore": true,
+      "source": "ixc-database",
+      "regime": "all",
+      "accounts": 42,
+      "series": 6,
+      "agingAvailable": true,
+      "reconciliationAvailable": true,
+      "receivableAvailable": true,
+      "payableAvailable": true,
+      "warnings": 0
+    },
+    {
+      "params": {
+        "from": "2026-10-01",
+        "to": "2026-10-06",
+        "regime": "cash",
+        "branchId": "8"
+      },
+      "status": 200,
+      "ms": 376,
+      "noStore": true,
+      "source": "ixc-database",
+      "regime": "cash",
+      "accounts": 7,
+      "series": 6,
+      "agingAvailable": true,
+      "reconciliationAvailable": true,
+      "receivableAvailable": true,
+      "payableAvailable": true,
+      "warnings": 0
+    },
+    {
+      "params": {
+        "from": "2026-01-01",
+        "to": "2026-10-06",
+        "regime": "all"
+      },
+      "status": 200,
+      "ms": 13258,
+      "noStore": true,
+      "source": "ixc-database",
+      "regime": "all",
+      "accounts": 142,
+      "series": 10,
+      "agingAvailable": true,
+      "reconciliationAvailable": true,
+      "receivableAvailable": true,
+      "payableAvailable": true,
+      "warnings": 1
+    }
+  ]
+}

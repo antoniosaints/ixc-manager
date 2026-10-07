@@ -1,0 +1,75 @@
+export const permissionCatalog = [
+  { key: "finance.dashboard.view", group: "Financeiro", label: "Ver painel, evolução, contas e valores em aberto" },
+  { key: "churn.dashboard", group: "Churn", label: "Ver painel e lista de clientes" },
+  { key: "churn.analytics", group: "Churn", label: "Ver análises" },
+  { key: "churn.attention.view", group: "Churn", label: "Ver fila de atenção" },
+  { key: "churn.resolved.view", group: "Churn", label: "Ver clientes resolvidos" },
+  { key: "churn.customer.view", group: "Churn", label: "Ver detalhes e histórico do cliente" },
+  { key: "churn.customer.export", group: "Churn", label: "Exportar relatório do cliente em PDF" },
+  { key: "churn.notes.create", group: "Churn", label: "Adicionar anotações ao cliente" },
+  { key: "churn.workflow.resolve", group: "Churn", label: "Resolver tratativas" },
+  { key: "churn.workflow.reopen", group: "Churn", label: "Reabrir as próprias tratativas" },
+  { key: "churn.attention.manage", group: "Churn", label: "Marcar e remover atenção crítica" },
+  { key: "churn.recalculate", group: "Processos", label: "Recalcular scores" },
+  { key: "churn.processes.view", group: "Processos", label: "Ver processos de sincronização" },
+  { key: "churn.jobs.view", group: "Processos", label: "Consultar andamento de recálculos" },
+  { key: "churn.sync", group: "Processos", label: "Iniciar sincronização" },
+  { key: "upgrades.opportunities.view", group: "Upgrades", label: "Ver oportunidades" },
+  { key: "upgrades.contract.view", group: "Upgrades", label: "Ver detalhes de contratos" },
+  { key: "upgrades.plans.view", group: "Upgrades", label: "Ver catálogo de planos" },
+  { key: "upgrades.logins.view", group: "Upgrades", label: "Ver logins, IPs e dados técnicos" },
+  { key: "upgrades.credentials.view", group: "Upgrades", label: "Revelar e copiar senhas de internet, roteador e Wi-Fi" },
+  { key: "upgrades.equipment.access", group: "Upgrades", label: "Abrir atalhos para equipamentos do cliente" },
+  { key: "upgrades.export", group: "Upgrades", label: "Exportar listas em PDF" },
+  { key: "support.customers.view", group: "Suporte", label: "Ver lista de clientes" },
+  { key: "support.customer.view", group: "Suporte", label: "Ver cadastro e contatos do cliente" },
+  { key: "support.customer.analyze", group: "Suporte", label: "Analisar risco de cancelamento ao vivo (inclui indicadores financeiros)" },
+  { key: "support.contract.view", group: "Suporte", label: "Ver contratos, inclusive inativos" },
+  { key: "support.logins.view", group: "Suporte", label: "Ver logins, IPs e dados técnicos" },
+  { key: "support.orders.view", group: "Suporte", label: "Ver ordens de serviço" },
+  { key: "support.tickets.view", group: "Suporte", label: "Ver atendimentos" },
+  { key: "support.comodato.view", group: "Suporte", label: "Consultar comodatos do contrato" },
+  { key: "support.credentials.view", group: "Suporte", label: "Revelar e copiar senhas" },
+  { key: "support.equipment.access", group: "Suporte", label: "Acessar equipamentos com cópia da senha" },
+] as const;
+export type Permission = (typeof permissionCatalog)[number]["key"];
+export const permissionKeys = permissionCatalog.map((item) => item.key);
+const operator: Permission[] = [
+  "support.customers.view",
+  "support.customer.view",
+  "support.customer.analyze",
+  "support.contract.view",
+  "support.logins.view",
+  "support.orders.view",
+  "support.tickets.view",
+  "support.comodato.view",
+  "churn.analytics",
+  "churn.attention.view",
+  "churn.resolved.view",
+  "churn.customer.view",
+  "churn.customer.export",
+  "churn.notes.create",
+  "churn.workflow.resolve",
+  "churn.workflow.reopen",
+  "churn.jobs.view",
+  "upgrades.opportunities.view",
+  "upgrades.contract.view",
+  "upgrades.logins.view",
+  "upgrades.plans.view",
+  "upgrades.export",
+];
+export const rolePermissions: Record<string, Permission[]> = {
+  USER: ["churn.analytics"],
+  OPERATOR: operator,
+  MANAGER: [...operator.filter((key) => key !== "churn.jobs.view"), "churn.dashboard", "churn.attention.manage"],
+  ADMIN: [...permissionKeys],
+};
+export function effectivePermissions(role: string, profile: string[] | null, overrides: Record<string, boolean> = {}): Permission[] {
+  if (role === "ADMIN") return [...permissionKeys];
+  const access = new Set(profile ?? rolePermissions[role] ?? []);
+  for (const key of permissionKeys) {
+    if (overrides[key] === true) access.add(key);
+    else if (overrides[key] === false) access.delete(key);
+  }
+  return permissionKeys.filter((key) => access.has(key));
+}

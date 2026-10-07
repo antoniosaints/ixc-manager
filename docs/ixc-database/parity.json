@@ -1,0 +1,23 @@
+{
+  "checkedAt": "2026-10-06T19:04:28.104Z",
+  "period": {
+    "from": "2026-10-01",
+    "to": "2026-10-06"
+  },
+  "apiDurationMs": 18123,
+  "sqlDurationMs": 392,
+  "apiWarnings": 0,
+  "parity": {
+    "revenue": true,
+    "expense": true,
+    "previousRevenue": true,
+    "previousExpense": true,
+    "receivableTotal": true,
+    "receivableOverdue": true,
+    "receivableCount": true,
+    "payableTotal": true,
+    "payableOverdue": true,
+    "payableCount": true
+  },
+  "note": "Independent live reads; equality may differ if IXC changes between them. Only comparison booleans and timing saved."
+}

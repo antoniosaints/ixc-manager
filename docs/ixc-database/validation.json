@@ -1,0 +1,382 @@
+{
+  "generatedAt": "2026-10-06T18:58:57.769Z",
+  "period": {
+    "from": "2026-09-25",
+    "toExclusive": "2026-10-07"
+  },
+  "queries": [
+    {
+      "name": "movement-quality",
+      "ms": 185,
+      "rows": [
+        {
+          "cancellation": "empty",
+          "kind": "M",
+          "rowsCount": "6929",
+          "missingAnalytic": "0",
+          "missingSynthetic": "0",
+          "typeMismatch": "0",
+          "transferLinked": "5"
+        },
+        {
+          "cancellation": "empty",
+          "kind": "P",
+          "rowsCount": "355",
+          "missingAnalytic": "0",
+          "missingSynthetic": "0",
+          "typeMismatch": "0",
+          "transferLinked": "0"
+        },
+        {
+          "cancellation": "empty",
+          "kind": "R",
+          "rowsCount": "10318",
+          "missingAnalytic": "0",
+          "missingSynthetic": "0",
+          "typeMismatch": "0",
+          "transferLinked": "0"
+        },
+        {
+          "cancellation": "empty",
+          "kind": "D",
+          "rowsCount": "4842",
+          "missingAnalytic": "0",
+          "missingSynthetic": "0",
+          "typeMismatch": "0",
+          "transferLinked": "5"
+        },
+        {
+          "cancellation": "empty",
+          "kind": "C",
+          "rowsCount": "2637",
+          "missingAnalytic": "0",
+          "missingSynthetic": "0",
+          "typeMismatch": "0",
+          "transferLinked": "0"
+        }
+      ]
+    },
+    {
+      "name": "ledger-regime",
+      "ms": 206,
+      "rows": [
+        {
+          "type": "A",
+          "regime": "S",
+          "rowsCount": "2884",
+          "accountCount": "4"
+        },
+        {
+          "type": "A",
+          "regime": "N",
+          "rowsCount": "5624",
+          "accountCount": "12"
+        },
+        {
+          "type": "P",
+          "regime": "N",
+          "rowsCount": "8",
+          "accountCount": "3"
+        },
+        {
+          "type": "R",
+          "regime": "S",
+          "rowsCount": "12459",
+          "accountCount": "9"
+        },
+        {
+          "type": "D",
+          "regime": "S",
+          "rowsCount": "4105",
+          "accountCount": "55"
+        },
+        {
+          "type": "D",
+          "regime": "N",
+          "rowsCount": "1",
+          "accountCount": "1"
+        }
+      ]
+    },
+    {
+      "name": "fn_areceber-quality",
+      "ms": 48,
+      "rows": [
+        {
+          "status": "A",
+          "previsao": "N",
+          "reversed": "N",
+          "rowsCount": "1",
+          "nullBalance": "0",
+          "negativeBalance": "0",
+          "missingAnalytic": "0",
+          "bankInsteadOfAnalytic": "0"
+        },
+        {
+          "status": "A",
+          "previsao": "S",
+          "reversed": "N",
+          "rowsCount": "2121",
+          "nullBalance": "0",
+          "negativeBalance": "0",
+          "missingAnalytic": "0",
+          "bankInsteadOfAnalytic": "0"
+        },
+        {
+          "status": "R",
+          "previsao": "N",
+          "reversed": "N",
+          "rowsCount": "2",
+          "nullBalance": "0",
+          "negativeBalance": "0",
+          "missingAnalytic": "0",
+          "bankInsteadOfAnalytic": "0"
+        },
+        {
+          "status": "R",
+          "previsao": "S",
+          "reversed": "N",
+          "rowsCount": "2925",
+          "nullBalance": "0",
+          "negativeBalance": "0",
+          "missingAnalytic": "0",
+          "bankInsteadOfAnalytic": "0"
+        },
+        {
+          "status": "C",
+          "previsao": "S",
+          "reversed": "N",
+          "rowsCount": "579",
+          "nullBalance": "0",
+          "negativeBalance": "0",
+          "missingAnalytic": "0",
+          "bankInsteadOfAnalytic": "0"
+        }
+      ]
+    },
+    {
+      "name": "fn_apagar-quality",
+      "ms": 17,
+      "rows": [
+        {
+          "status": "A",
+          "previsao": "N",
+          "reversed": "N",
+          "rowsCount": "1",
+          "nullBalance": "0",
+          "negativeBalance": "0",
+          "missingAnalytic": "0",
+          "bankInsteadOfAnalytic": "0"
+        },
+        {
+          "status": "A",
+          "previsao": "S",
+          "reversed": "",
+          "rowsCount": "8",
+          "nullBalance": "0",
+          "negativeBalance": "0",
+          "missingAnalytic": "0",
+          "bankInsteadOfAnalytic": "0"
+        },
+        {
+          "status": "A",
+          "previsao": "S",
+          "reversed": "empty",
+          "rowsCount": "1",
+          "nullBalance": "0",
+          "negativeBalance": "0",
+          "missingAnalytic": "0",
+          "bankInsteadOfAnalytic": "0"
+        },
+        {
+          "status": "A",
+          "previsao": "S",
+          "reversed": "N",
+          "rowsCount": "42",
+          "nullBalance": "0",
+          "negativeBalance": "0",
+          "missingAnalytic": "0",
+          "bankInsteadOfAnalytic": "0"
+        },
+        {
+          "status": "F",
+          "previsao": "N",
+          "reversed": "",
+          "rowsCount": "2",
+          "nullBalance": "0",
+          "negativeBalance": "0",
+          "missingAnalytic": "0",
+          "bankInsteadOfAnalytic": "0"
+        },
+        {
+          "status": "F",
+          "previsao": "N",
+          "reversed": "N",
+          "rowsCount": "1",
+          "nullBalance": "0",
+          "negativeBalance": "0",
+          "missingAnalytic": "0",
+          "bankInsteadOfAnalytic": "0"
+        },
+        {
+          "status": "F",
+          "previsao": "S",
+          "reversed": "",
+          "rowsCount": "46",
+          "nullBalance": "0",
+          "negativeBalance": "0",
+          "missingAnalytic": "0",
+          "bankInsteadOfAnalytic": "0"
+        },
+        {
+          "status": "F",
+          "previsao": "S",
+          "reversed": "N",
+          "rowsCount": "304",
+          "nullBalance": "0",
+          "negativeBalance": "0",
+          "missingAnalytic": "0",
+          "bankInsteadOfAnalytic": "0"
+        },
+        {
+          "status": "F",
+          "previsao": "S",
+          "reversed": "S",
+          "rowsCount": "1",
+          "nullBalance": "0",
+          "negativeBalance": "0",
+          "missingAnalytic": "0",
+          "bankInsteadOfAnalytic": "0"
+        }
+      ]
+    },
+    {
+      "name": "receivable-renegotiation",
+      "ms": 32,
+      "rows": [
+        {
+          "titulo_renegociado": "",
+          "tipo_renegociacao": null,
+          "rowsCount": "2",
+          "withBalance": "0"
+        },
+        {
+          "titulo_renegociado": "N",
+          "tipo_renegociacao": null,
+          "rowsCount": "5626",
+          "withBalance": "2122"
+        }
+      ]
+    },
+    {
+      "name": "ledger-balance",
+      "ms": 93,
+      "rows": [
+        {
+          "rowsCount": "25081",
+          "balanced": true
+        }
+      ]
+    },
+    {
+      "name": "explain-movement-aggregation",
+      "ms": 28,
+      "rows": [
+        {
+          "id": "1",
+          "select_type": "SIMPLE",
+          "table": "m",
+          "type": "range",
+          "possible_keys": "data",
+          "key": "data",
+          "key_len": "3",
+          "ref": null,
+          "rows": "51074",
+          "Extra": "Using index condition; Using temporary; Using filesort"
+        },
+        {
+          "id": "1",
+          "select_type": "SIMPLE",
+          "table": "a",
+          "type": "eq_ref",
+          "possible_keys": "PRIMARY",
+          "key": "PRIMARY",
+          "key_len": "4",
+          "ref": "ixcprovedor.m.id_conta",
+          "rows": "1",
+          "Extra": ""
+        },
+        {
+          "id": "1",
+          "select_type": "SIMPLE",
+          "table": "p",
+          "type": "eq_ref",
+          "possible_keys": "PRIMARY",
+          "key": "PRIMARY",
+          "key_len": "4",
+          "ref": "ixcprovedor.a.id_planejamento",
+          "rows": "1",
+          "Extra": "Using where"
+        }
+      ]
+    },
+    {
+      "name": "explain-receivable",
+      "ms": 13,
+      "rows": [
+        {
+          "id": "1",
+          "select_type": "SIMPLE",
+          "table": "fn_areceber",
+          "type": "range",
+          "possible_keys": "data_vencimento",
+          "key": "data_vencimento",
+          "key_len": "3",
+          "ref": null,
+          "rows": "5628",
+          "Extra": "Using where; Using index"
+        }
+      ]
+    },
+    {
+      "name": "explain-payable",
+      "ms": 10,
+      "rows": [
+        {
+          "id": "1",
+          "select_type": "SIMPLE",
+          "table": "fn_apagar",
+          "type": "range",
+          "possible_keys": "data_vencimento",
+          "key": "data_vencimento",
+          "key_len": "3",
+          "ref": null,
+          "rows": "406",
+          "Extra": "Using where; Using index"
+        }
+      ]
+    },
+    {
+      "name": "explain-bank-extract",
+      "ms": 10,
+      "rows": [
+        {
+          "id": "1",
+          "select_type": "SIMPLE",
+          "table": "fn_extrato",
+          "type": "ALL",
+          "possible_keys": null,
+          "key": null,
+          "key_len": null,
+          "ref": null,
+          "rows": "221897",
+          "Extra": "Using where"
+        }
+      ]
+    }
+  ],
+  "benchmark": {
+    "ms": 184,
+    "aggregateRows": 1373
+  }
+}
