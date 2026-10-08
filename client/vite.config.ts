@@ -10,6 +10,8 @@ if (!/^\d+$/.test(backendPort) || Number(backendPort) < 1 || Number(backendPort)
 const backendTarget = `http://127.0.0.1:${backendPort}`;
 
 export default defineConfig({
+  // Load public VITE_* variables from the same root .env as the backend.
+  envDir: fileURLToPath(new URL("../", import.meta.url)),
   plugins: [vue()],
   server: {
     host: "0.0.0.0",

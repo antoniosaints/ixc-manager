@@ -1,6 +1,7 @@
 import { inject, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useAuthStore } from "../stores/auth";
 import { activeRecordDialogTarget, recordDialogPortal } from "./recordDialog";
+import { apiWebSocketUrl } from "../http";
 
 export interface OfflineEvent {
   id: number;
@@ -104,7 +105,7 @@ export function useNetworkMonitor(options: {
     state.value = attempts ? "reconnecting" : "connecting";
     message.value = "";
     const version = generation;
-    const ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/api/network/live`);
+    const ws = new WebSocket(apiWebSocketUrl());
     socket = ws;
     const armDeadline = () => {
       clearTimeout(deadline);

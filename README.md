@@ -104,7 +104,17 @@ Para acessar pela rede interna, abra `http://<IP-local-do-computador>:5173` em o
 
 Use `npm run build` (ou `build:all`) para compilar os dois workspaces. Os comandos `npm run build:backend` e `npm run build:frontend` compilam cada um separadamente. Os scripts de instalação incluem as dependências de desenvolvimento necessárias ao build, mesmo quando `NODE_ENV=production`.
 
-Em desenvolvimento, `npm run dev` usa Vite na porta 5173 com proxy `/api` e WebSocket para a porta `PORT` do backend (3000 por padrão), lida do ambiente/`.env`. Em produção, **`npm start`** inicia o Fastify em `0.0.0.0:PORT` e serve o `client/dist` compilado junto da API. As URLs do navegador continuam relativas e o monitor usa o host/protocolo da página; não há domínio de backend ou credenciais embutidos no frontend. `npm run start:backend` é um alias para o mesmo processo; sem `client/dist`, ele continua disponível apenas como API. `FRONTEND_DIST` permite apontar para outro diretório compilado, como `/var/www/dist`.
+Em desenvolvimento, `npm run dev` usa Vite na porta 5173 com proxy `/api` e WebSocket para a porta `PORT` do backend (3000 por padrão), lida do ambiente/`.env`. Em produção, **`npm start`** inicia o Fastify em `0.0.0.0:PORT` e serve o `client/dist` compilado junto da API. `npm run start:backend` é um alias para o mesmo processo; sem `client/dist`, ele continua disponível apenas como API. `FRONTEND_DIST` permite apontar para outro diretório compilado, como `/var/www/dist`.
+
+Configure `VITE_BACKEND_URL` no `.env` da **raiz** ou no ambiente de build do frontend para informar a URL pública do backend:
+
+```env
+VITE_BACKEND_URL=https://analitc.ngoezu.easypanel.host
+```
+
+O valor deve apontar para o serviço que atende `/api`, com HTTP/HTTPS; também aceita a URL terminada em `/api`. Todas as consultas, downloads de PDF e o WebSocket usam esse destino no build de produção (HTTPS gera WSS). Se estiver vazio, usam o mesmo domínio do frontend. Em desenvolvimento, a URL de produção é ignorada e o proxy local continua funcionando. Após mudar essa variável, execute `npm run build:frontend` e publique novamente `client/dist`: o Vite incorpora o valor no build, sem carregar o `.env` em tempo de execução ([Vite](https://vite.dev/guide/env-and-mode)). Somente variáveis públicas `VITE_*` são disponibilizadas ao navegador; não coloque credenciais nelas.
+
+Quando frontend e backend tiverem domínios diferentes, configure `CORS_ORIGIN` no backend com a origem exata do frontend, por exemplo `https://app.exemplo.com`, sem barra final. Essa permissão também é validada na conexão WebSocket.
 
 Para o serviço que usa a pasta `code`, configure os comandos separados no Easypanel:
 
