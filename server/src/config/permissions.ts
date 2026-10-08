@@ -1,6 +1,13 @@
 export const permissionCatalog = [
+  { key: "network.onus.view", group: "Rede", label: "Consultar ONUs, OLTs, perfis e pendências de autorização" },
+  { key: "network.equipment.authorize", group: "Rede", label: "Autorizar e desautorizar equipamentos na OLT (altera o IXC e a rede)" },
+  {
+    key: "network.logins.list",
+    group: "Rede",
+    label: "Consultar lista geral de logins, clientes, documentos e filtros; acompanhar desconexões",
+  },
   { key: "network.boxes.view", group: "Rede", label: "Consultar caixas de atendimento, capacidade e indicadores de conexão" },
-  { key: "network.logins.view", group: "Rede", label: "Ver logins por caixa, clientes, portas, IPs e dados de conexão" },
+  { key: "network.logins.view", group: "Rede", label: "Ver detalhes técnicos de logins, por caixa ou lista geral, e potência óptica" },
   { key: "collections.customers.view", group: "Cobranças", label: "Ver fila de clientes, saldos e filtros de cobrança" },
   { key: "collections.customer.view", group: "Cobranças", label: "Ver contatos e títulos detalhados do cliente" },
   { key: "collections.export", group: "Cobranças", label: "Exportar e distribuir listas de cobrança em PDF" },
@@ -69,6 +76,65 @@ export const rolePermissions: Record<string, Permission[]> = {
   MANAGER: [...operator.filter((key) => key !== "churn.jobs.view"), "churn.dashboard", "churn.attention.manage"],
   ADMIN: [...permissionKeys],
 };
+/** Templates are opt-in; existing custom profiles and user overrides remain authoritative. */
+export const accessPresets: { key: string; name: string; description: string; permissions: Permission[] }[] = [
+  { key: "USER", name: "Consulta analítica", description: "Acesso às análises de Churn.", permissions: rolePermissions.USER! },
+  {
+    key: "OPERATOR",
+    name: "Operador",
+    description: "Operação de retenção, upgrades e atendimento.",
+    permissions: rolePermissions.OPERATOR!,
+  },
+  { key: "MANAGER", name: "Gestor", description: "Painel de Churn, filas e gestão de atenção.", permissions: rolePermissions.MANAGER! },
+  {
+    key: "SUPPORT",
+    name: "Suporte",
+    description: "Cadastro, contratos, atendimentos, logins e caixas; sem acesso a senhas.",
+    permissions: [
+      "support.customers.view",
+      "support.customer.view",
+      "support.contract.view",
+      "support.logins.view",
+      "support.orders.view",
+      "support.tickets.view",
+      "support.comodato.view",
+      "network.boxes.view",
+      "network.logins.view",
+      "network.logins.list",
+      "network.onus.view",
+    ],
+  },
+  {
+    key: "NETWORK",
+    name: "Rede",
+    description: "Caixas, lista geral de logins, dados técnicos e monitor em tempo real.",
+    permissions: ["network.boxes.view", "network.logins.view", "network.logins.list", "network.onus.view"],
+  },
+  {
+    key: "COMMERCIAL",
+    name: "Comercial",
+    description: "Oportunidades, planos, contratos e exportação; sem acesso a senhas.",
+    permissions: [
+      "upgrades.opportunities.view",
+      "upgrades.contract.view",
+      "upgrades.plans.view",
+      "upgrades.logins.view",
+      "upgrades.export",
+    ],
+  },
+  {
+    key: "FINANCE",
+    name: "Financeiro",
+    description: "Painel financeiro e gestão de pendências e cobranças.",
+    permissions: ["finance.dashboard.view", "collections.customers.view", "collections.customer.view", "collections.export"],
+  },
+  {
+    key: "COLLECTIONS",
+    name: "Cobranças",
+    description: "Fila, contatos, títulos pendentes e exportação para cobrança.",
+    permissions: ["collections.customers.view", "collections.customer.view", "collections.export"],
+  },
+];
 export function effectivePermissions(role: string, profile: string[] | null, overrides: Record<string, boolean> = {}): Permission[] {
   if (role === "ADMIN") return [...permissionKeys];
   const access = new Set(profile ?? rolePermissions[role] ?? []);

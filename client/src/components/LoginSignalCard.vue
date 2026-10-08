@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, watch } from "vue";
-import { Activity, RefreshCw, Info, AlertTriangle } from "lucide-vue-next";
+import { computed, watch, ref, defineAsyncComponent } from "vue";
+import { Activity, RefreshCw, Info, AlertTriangle, Cable } from "lucide-vue-next";
 import { useAuthStore } from "../stores/auth";
 import { useLiveQuery } from "../composables/useLiveQuery";
 import { upgradesApi, formatIxcDateTime, formatConsulted, type LoginSignalDetails } from "../upgradesApi";
@@ -9,20 +9,36 @@ import { networkApi } from "../networkApi";
 import LiveQueryState from "./LiveQueryState.vue";
 import TechnicalStatus from "./TechnicalStatus.vue";
 import { rxSignalLevel } from "../opticalSignal";
-const props = defineProps<{ module: "support" | "upgrades" | "network"; loginId: number; contractId?: string; boxId?: number }>();
+const props = defineProps<{
+  module: "support" | "upgrades" | "network";
+  loginId: number;
+  contractId?: string;
+  boxId?: number;
+  direct?: boolean;
+}>();
 const auth = useAuthStore();
+const selectedOnu = ref<number | null>(null);
+const OnuDetailsDialog = defineAsyncComponent(() => import("./OnuDetailsDialog.vue"));
 const allowed = computed(() =>
   props.module === "network"
-    ? !!props.boxId && auth.can("network.boxes.view") && auth.can("network.logins.view")
+    ? auth.can("network.logins.view") && (props.direct ? auth.can("network.logins.list") : !!props.boxId && auth.can("network.boxes.view"))
     : !!props.contractId && auth.can(`${props.module}.contract.view`) && auth.can(`${props.module}.logins.view`)
 );
 const { data, loading, error, reload } = useLiveQuery<LoginSignalDetails | null>(async (signal) => {
   if (!allowed.value) return null;
   return props.module === "network"
-    ? networkApi.loginSignal(props.boxId!, props.loginId, signal)
+    ? props.direct
+      ? networkApi.directSignal(props.loginId, signal)
+      : networkApi.loginSignal(props.boxId!, props.loginId, signal)
     : (props.module === "support" ? supportApi : upgradesApi).loginSignal(props.contractId!, props.loginId, signal);
 });
 watch(() => [props.module, props.loginId, props.contractId, props.boxId, allowed.value], reload);
+watch(
+  () => auth.can("network.onus.view"),
+  (allowed) => {
+    if (!allowed) selectedOnu.value = null;
+  }
+);
 const number = (value: number | null, unit: string) =>
   value === null ? "Sem leitura" : `${value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${unit}`;
 </script>
@@ -30,9 +46,23 @@ const number = (value: number | null, unit: string) =>
   <section v-if="allowed" class="support-case-card" aria-label="Potência óptica da ONU">
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
       <h3 class="support-case-heading !mb-0"><Activity aria-hidden="true" />Potência óptica da ONU</h3>
-      <button type="button" class="button-secondary" :disabled="loading" @click="reload">
-        <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': loading }" aria-hidden="true" />Atualizar consulta
-      </button>
+      <div class="flex flex-wrap items-center gap-2">
+        <template v-if="data && !loading && !error && auth.can('network.onus.view')">
+          <button
+            v-for="reading in data.readings"
+            :key="reading.onuId"
+            class="button-secondary"
+            type="button"
+            :aria-label="`Gerenciar ONU #${reading.onuId}`"
+            @click="selectedOnu = reading.onuId"
+          >
+            <Cable class="h-3.5 w-3.5" aria-hidden="true" />Gerenciar ONU<span v-if="data.readings.length > 1">#{{ reading.onuId }}</span>
+          </button>
+        </template>
+        <button type="button" class="button-secondary" :disabled="loading" @click="reload">
+          <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': loading }" aria-hidden="true" />Atualizar consulta
+        </button>
+      </div>
     </div>
     <LiveQueryState :loading="loading" :error="error" @retry="reload" />
     <template v-if="data && !loading && !error">
@@ -53,24 +83,26 @@ const number = (value: number | null, unit: string) =>
           <strong
             >ONU #{{ reading.onuId }}<span v-if="reading.model" class="font-normal text-slate-500"> · {{ reading.model }}</span></strong
           >
-          <TechnicalStatus
-            :label="
-              reading.powerStatus === 'regular'
-                ? 'Potência regular (IXC)'
-                : reading.powerStatus === 'irregular'
-                  ? 'Potência irregular (IXC)'
-                  : 'Potência sem classificação'
-            "
-            :tone="
-              reading.rxDbm === null && reading.txDbm === null
-                ? 'neutral'
-                : reading.powerStatus === 'regular'
-                  ? 'success'
+          <div class="flex flex-wrap items-center gap-2">
+            <TechnicalStatus
+              :label="
+                reading.powerStatus === 'regular'
+                  ? 'Potência regular (IXC)'
                   : reading.powerStatus === 'irregular'
-                    ? 'danger'
-                    : 'neutral'
-            "
-          />
+                    ? 'Potência irregular (IXC)'
+                    : 'Potência sem classificação'
+              "
+              :tone="
+                reading.rxDbm === null && reading.txDbm === null
+                  ? 'neutral'
+                  : reading.powerStatus === 'regular'
+                    ? 'success'
+                    : reading.powerStatus === 'irregular'
+                      ? 'danger'
+                      : 'neutral'
+              "
+            />
+          </div>
         </div>
         <p v-if="reading.contractMismatch" class="mb-3 flex items-start gap-1.5 text-[11px] text-amber-700">
           <AlertTriangle class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />A ONU ainda aponta para o contrato #{{
@@ -133,5 +165,11 @@ const number = (value: number | null, unit: string) =>
         {{ data.source === "ixc-database" ? "Banco IXC" : "API IXC" }} · Consultado em {{ formatConsulted(data.queriedAt) }} · Brasília
       </p>
     </template>
+    <OnuDetailsDialog
+      v-if="selectedOnu && auth.can('network.onus.view')"
+      :onu-id="selectedOnu"
+      @close="selectedOnu = null"
+      @changed="reload"
+    />
   </section>
 </template>

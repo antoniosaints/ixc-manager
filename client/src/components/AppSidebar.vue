@@ -44,8 +44,16 @@ const modules = computed(() => [
   ...(auth.can("support.customers.view")
     ? [{ id: "support", label: "Suporte", description: "Consulta e validação de clientes", icon: Headset, to: "/support" }]
     : []),
-  ...(auth.can("network.boxes.view")
-    ? [{ id: "network", label: "Rede", description: "Caixas de atendimento e conexões", icon: Network, to: "/network" }]
+  ...(auth.can("network.boxes.view") || auth.can("network.logins.list") || auth.can("network.onus.view")
+    ? [
+        {
+          id: "network",
+          label: "Rede",
+          description: "Caixas, logins e ONUs",
+          icon: Network,
+          to: auth.can("network.boxes.view") ? "/network" : auth.can("network.logins.list") ? "/network/logins" : "/network/onus",
+        },
+      ]
     : []),
   ...(auth.can("finance.dashboard.view")
     ? [{ id: "finance", label: "Financeiro", description: "Análise de receitas e despesas", icon: Banknote, to: "/finance" }]

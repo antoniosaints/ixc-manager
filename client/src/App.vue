@@ -16,6 +16,7 @@ import {
   ReceiptText,
   ListFilter,
   Cable,
+  Network,
 } from "lucide-vue-next";
 import { api } from "./api";
 import { useAuthStore } from "./stores/auth";
@@ -109,7 +110,11 @@ const logout = async () => {
         <RouterLink
           :to="
             isNetwork
-              ? '/network'
+              ? auth.can('network.boxes.view')
+                ? '/network'
+                : auth.can('network.logins.list')
+                  ? '/network/logins'
+                  : '/network/onus'
               : isCollections
                 ? '/collections'
                 : isFinance
@@ -163,8 +168,27 @@ const logout = async () => {
           ></RouterLink
         >
         <nav v-if="isNetwork" class="app-header-nav flex items-center gap-2 text-sm font-medium" aria-label="Navegação de Rede">
-          <RouterLink to="/network" class="network-nav-active rounded-lg px-3 py-2"
+          <RouterLink
+            v-if="auth.can('network.boxes.view')"
+            to="/network"
+            class="rounded-lg px-3 py-2"
+            :class="route.path === '/network' ? 'network-nav-active' : ''"
+            :aria-current="route.path === '/network' ? 'page' : undefined"
             ><Cable class="mr-1 inline h-4 w-4" aria-hidden="true" />Caixas de atendimento</RouterLink
+          ><RouterLink
+            v-if="auth.can('network.logins.list')"
+            to="/network/logins"
+            class="rounded-lg px-3 py-2"
+            :class="route.path === '/network/logins' ? 'network-nav-active' : ''"
+            :aria-current="route.path === '/network/logins' ? 'page' : undefined"
+            ><Network class="mr-1 inline h-4 w-4" aria-hidden="true" />Logins</RouterLink
+          ><RouterLink
+            v-if="auth.can('network.onus.view')"
+            to="/network/onus"
+            class="rounded-lg px-3 py-2"
+            :class="route.path === '/network/onus' ? 'network-nav-active' : ''"
+            :aria-current="route.path === '/network/onus' ? 'page' : undefined"
+            ><Cable class="mr-1 inline h-4 w-4" aria-hidden="true" />ONUs</RouterLink
           ><button type="button" class="button-primary ml-2 !px-3 !py-2" @click="upgradesRefresh++">
             <RefreshCw class="h-4 w-4" aria-hidden="true" />Atualizar consulta
           </button>

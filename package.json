@@ -7,6 +7,9 @@
     "client"
   ],
   "scripts": {
+    "install:all": "npm install --workspaces --include-workspace-root",
+    "install:backend": "npm install --workspace server --include-workspace-root",
+    "install:frontend": "npm install --workspace client --include-workspace-root",
     "dev": "concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
     "dev:dashboard": "npm run dev -w client",
     "build": "npm run build -w server && npm run build -w client",

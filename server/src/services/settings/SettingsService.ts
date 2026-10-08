@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db } from "../../repositories/database.js";
-import { permissionCatalog, permissionKeys, rolePermissions, type Permission } from "../../config/permissions.js";
+import { permissionCatalog, permissionKeys, rolePermissions, accessPresets, type Permission } from "../../config/permissions.js";
 
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 export const paletteSchema = z.object({
@@ -151,6 +151,7 @@ export class SettingsService {
     return {
       catalog: permissionCatalog,
       defaults: rolePermissions,
+      presets: accessPresets,
       profiles: rows.map((row) => ({
         id: Number(row.id),
         name: row.name,

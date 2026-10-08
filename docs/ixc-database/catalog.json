@@ -2276,7 +2276,7 @@
       "estimatedRows": "29",
       "columnCount": 8,
       "primaryKey": ["id"],
-      "typedMap": false
+      "typedMap": true
     },
     {
       "tableName": "df_projeto_funcionarios",
@@ -5912,7 +5912,7 @@
       "estimatedRows": "21",
       "columnCount": 5,
       "primaryKey": ["id"],
-      "typedMap": false
+      "typedMap": true
     },
     {
       "tableName": "radpop_radio",
@@ -5966,7 +5966,7 @@
       "estimatedRows": "10",
       "columnCount": 4,
       "primaryKey": ["id"],
-      "typedMap": false
+      "typedMap": true
     },
     {
       "tableName": "radpop_radio_cliente_log",
@@ -6002,7 +6002,7 @@
       "estimatedRows": "675",
       "columnCount": 49,
       "primaryKey": ["id"],
-      "typedMap": false
+      "typedMap": true
     },
     {
       "tableName": "radpop_radio_porta_log",
@@ -6227,7 +6227,7 @@
       "estimatedRows": "8",
       "columnCount": 13,
       "primaryKey": ["id"],
-      "typedMap": false
+      "typedMap": true
     },
     {
       "tableName": "rad_sici",

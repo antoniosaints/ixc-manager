@@ -30,6 +30,7 @@ export interface AccessProfile {
 export interface AccessCatalog {
   catalog: { key: string; group: string; label: string }[];
   defaults: Record<string, string[]>;
+  presets: { key: string; name: string; description: string; permissions: string[] }[];
   profiles: AccessProfile[];
 }
 export const defaultAppearance: Appearance = {

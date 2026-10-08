@@ -1,6 +1,6 @@
 # Painel de Retenção CAS
 
-Sistema com os módulos Churn, Upgrades, Suporte e Configurações para clientes do IXC Provedor. O frontend acessa a API interna: Churn usa a base analítica local atualizada por workers; Upgrades e Suporte consultam o IXC em tempo real pelo backend.
+Sistema com os módulos Churn, Upgrades, Suporte, Rede, Financeiro, Cobranças e Configurações para clientes do IXC Provedor. O frontend acessa a API interna: Churn usa a base analítica local atualizada por workers; Upgrades e Suporte consultam o IXC em tempo real pelo backend.
 
 ## Notificações
 
@@ -42,12 +42,29 @@ Sistema com os módulos Churn, Upgrades, Suporte e Configurações para clientes
 - Mapeamento conferido na coleção anexada e nas abas oficiais [Login](https://wiki-erp.ixcsoft.com.br/documentacao/menu-sistema/provedor/logins/formulario-login/aba-login.html), [Conexão e Franquia](https://wiki-erp.ixcsoft.com.br/documentacao/menu-sistema/provedor/logins/formulario-login/aba-conexao-e-franquia.html), [IP/MAC](https://wiki-erp.ixcsoft.com.br/documentacao/menu-sistema/provedor/logins/formulario-login/aba-ip-mac.html) e [Dados Técnicos](https://wiki-erp.ixcsoft.com.br/documentacao/menu-sistema/provedor/logins/formulario-login/aba-dados-tecnicos.html) do IXC. Campos vazios permanecem explicitamente não informados.
 - Upgrades não possui sincronização, jobs ou cache persistente. Abrir uma tela, aplicar filtros, paginar ou usar “Atualizar consulta” dispara novas leituras.
 
+## Rede → Logins
+
+- `/network/logins` apresenta a lista direta de logins, ativos por padrão, com paginação de 10/25, filtros de cadastro, conexão, cidade e filial. Busca por login, nome/ID da caixa FTTH, CPF/CNPJ completo (com ou sem máscara), cliente, ID do contrato, ID do login, cidade ou filial. Cidade e filial são campos distintos; os indicadores respeitam os filtros aplicados.
+- `GET /api/network/logins`, `/logins/filters`, `/logins/:loginId` e `/logins/:loginId/signal` consultam somente campos selecionados do banco IXC. O contrato deve pertencer ao mesmo cliente. A caixa é obtida do login ou, se ausente, de uma ONU com vínculo compatível; múltiplas caixas possíveis não são escolhidas arbitrariamente. Senhas não são selecionadas nem retornadas. Não há escrita, cache ou persistência de resultados no IXC.
+- O WebSocket de `/api/network/live` aceita o escopo `login-list`, com até 25 IDs. Consulta o IP a cada segundo somente da página visível; ao abrir o modal, acompanha apenas o login selecionado. Pausa quando a janela está oculta ou outro modal recebe o foco. Perda do IP atualiza o badge e gera um aviso com ação para listar os offline; a primeira leitura não gera alertas antigos. É o estado cadastrado no IXC, não um teste de alcance do equipamento.
+- Lista, filtros e monitor exigem `network.logins.list`; detalhe e sinal exigem também `network.logins.view`. Caixa/mapa exigem `network.boxes.view`; atalhos de Suporte, contratos e demais módulos mantêm suas próprias permissões. Menu, rota, HTTP e WebSocket aplicam as mesmas regras, com revalidação do acesso em cada ciclo. Somente ADMIN recebe a nova permissão automaticamente; os demais usam perfil ou exceção explícita.
+
+## Rede → ONUs
+
+- `/network/onus` oferece pendências por OLT, busca de serial/modelo/PON e cadastros com filtro de autorização. O detalhe mostra identificação, OLT, perfil, projeto, CTO e atalhos para login/contrato/caixa conforme as permissões do destino. O card de potência do login tem **Gerenciar ONU** para abrir o mesmo modal.
+- **Consultar ONUs** (`network.onus.view`) habilita as leituras. **Autorizar e desautorizar equipamentos na OLT** (`network.equipment.authorize`) habilita as operações, sempre junto da consulta. ADMIN possui ambas; os modelos de Suporte/Rede adicionam apenas consulta. Nenhum perfil personalizado ou usuário de consulta recebe escrita automaticamente. Conceda a operação explicitamente em Configurações → Perfis e permissões ou nas exceções individuais.
+- O formulário pede perfil compatível com a OLT, VLAN uplink, projeto/zona FTTH, CTO e porta disponível. Hardware é opcional; quando selecionado, precisa estar ativo e ser do tipo fibra. Escolha primeiro um contrato ativo (busca por ID, plano, cliente ou CPF/CNPJ) e depois um dos seus logins ativos (busca por login ou ID). Antes de confirmar, o operador revisa serial, PON, OLT e todos os vínculos.
+- Esta é a exceção de escrita autorizada para equipamentos: criação/configuração do cadastro de ONU e gravação/desautorização na OLT **pela API IXC**. O banco IXC continua somente SELECT. Desautorizar usa **Excluir dispositivo** e preserva o cadastro; não há DELETE, reboot, reset, baixa financeira ou troca automática de porta de login.
+- O servidor revalida as permissões antes de cada comando e os vínculos/ocupação antes de gravar. Redis (`casanalise_onu_...`, respeitando `REDIS_PREFIX`) coordena revisões de 5 minutos, resultados de 1 hora e travas por OLT/login. Repetir a confirmação da mesma revisão consulta o resultado; comandos não são reenviados automaticamente. Falha sem confirmação exige conferir o IXC antes de repetir. Bloqueios de OLT/login mostram o prazo da reserva e se a operação anterior está em andamento ou sem confirmação. O modal verifica a liberação por leitura a cada 2 segundos e oferece o resultado anterior apenas ao próprio usuário; não inicia nem repete comandos automaticamente. Sem Redis, a operação não inicia. O template do script do perfil é exibido somente a quem pode operar equipamentos, junto com os IDs e configurações na revisão. Scripts aplicados e credenciais do equipamento não são retornados; templates não são guardados nas revisões Redis. A seleção segue contrato ativo → login ativo do contrato, com selects pesquisáveis. Desautorização exige confirmação inicial e revisão antes do comando.
+- Fluxo e endpoints conferidos na coleção Postman fornecida e na [documentação oficial de autorização](https://wiki-erp.ixcsoft.com.br/documentacao/menu-sistema/provedor/autorizacao-de-onus.html). As consultas reais foram validadas em 08/10/2026. Comandos e UI foram testados com API simulada; nenhum equipamento real foi alterado. A credencial da integração precisa permitir as ações correspondentes no IXC.
+
 ## Configurações e acesso
 
 - `/settings` possui header próprio e abas Aparência, Usuários e Perfis e permissões. A antiga rota `/users` redireciona para `/settings/users`; gestão de usuários sai da navegação de Churn.
 - Apenas o papel `ADMIN` acessa essa área e suas APIs de edição/gestão. Nenhum perfil personalizado ou exceção individual pode conceder Configurações. O administrador sempre possui acesso completo.
 - A migração `016_settings_and_permission_profiles.sql` adiciona perfis, exceções por usuário e aparência. Aplique-a após as migrações existentes antes de subir o backend atualizado; usuários e acessos padrão existentes são preservados.
 - Cada perfil define permissões de leitura e ações específicas para Churn, Processos e Upgrades. Ao atribuir um perfil, suas permissões substituem as do papel padrão. Cada usuário pode herdar, receber ou bloquear permissões individualmente. Um perfil sem permissões não concede acesso.
+- O editor de perfis oferece modelos **Consulta analítica**, **Operador**, **Gestor**, **Suporte**, **Rede**, **Comercial**, **Financeiro** e **Cobranças**. Selecionar um modelo apenas preenche o formulário; salvar e atribuir continuam sendo ações do administrador. Os modelos de área não incluem senhas ou acesso a equipamentos. Os papéis existentes, perfis personalizados e exceções individuais são preservados; ADMIN mantém acesso completo.
 - A autorização é verificada no backend a cada requisição, lendo o perfil atual. A navegação também atualiza o usuário antes de abrir outra tela. Ações como anotar/resolver exigem leitura dos detalhes; exportar exige leitura de oportunidades. Operadores podem reabrir somente tratativas resolvidas por eles; administradores podem reabrir qualquer uma.
 - Alterações no próprio papel, perfil, exceções ou status são bloqueadas. Edições de usuários são transacionais e preservam ao menos um administrador ativo, inclusive em edições concorrentes.
 - Aparência configura nove cores em cada paleta (clara/escura), modo padrão claro/escuro/dispositivo, logo do header e favicon. Imagens PNG, JPEG ou WebP de até 256 KB são armazenadas como conteúdo embutido no registro de configurações. Cores de texto/fundo passam por validação de contraste. O botão de tema permite uma preferência local por navegador.
@@ -75,9 +92,13 @@ Validação real em 07/10/2026: API e MySQL coincidiram nos títulos e contratos
 
 1. Crie o banco MySQL e aplique, em ordem, todos os arquivos de `server/migrations/`.
 2. Copie `.env.example` para `.env` e preencha as credenciais do IXC, MySQL e Redis. Em Redis gerenciado, informe também `REDIS_PASSWORD` (e `REDIS_USERNAME`, normalmente `default`).
-3. Instale as dependências com `npm install` e execute `npm run dev`.
+3. Instale as dependências com `npm run install:all` e execute `npm run dev`.
+
+Na raiz do projeto, use `npm run install:all` para instalar backend e frontend, `npm run install:backend` para instalar apenas o backend ou `npm run install:frontend` para instalar apenas o frontend. Os três comandos também incluem as ferramentas de desenvolvimento do pacote raiz.
 
 API: `http://localhost:3000`. Dashboard: `http://localhost:5173`.
+
+Para acessar pela rede interna, abra `http://<IP-local-do-computador>:5173` em outro dispositivo da mesma rede. O frontend e a API escutam em `0.0.0.0`; as consultas e o WebSocket passam pelo endereço do dashboard, mantendo autenticação e permissões. Não é necessário mudar `CORS_ORIGIN` para esse acesso. O IP pode mudar conforme o DHCP da rede. Se outro dispositivo não conectar, verifique a liberação da porta TCP 5173 no firewall e o isolamento entre dispositivos no Wi-Fi.
 
 ## Decisões importantes
 
@@ -107,6 +128,8 @@ As cargas usam upsert em lotes e marcadores por fonte. Após a primeira base, Fi
 O menu **Financeiro** usa `GET /api/finance/dashboard?from=AAAA-MM-DD&to=AAAA-MM-DD`, com filtros opcionais `branchId` e `accountId` (conta contábil analítica). A permissão `finance.dashboard.view` é exclusiva do ADMIN por padrão e pode ser concedida em Configurações → Perfis e permissões. Não há rotas de alteração, baixa, cancelamento, conciliação ou exportação no módulo.
 
 O header divide o módulo em **Painel** (`/finance`), com indicadores, gráfico e contas com maior participação, e **Lista** (`/finance/list`), com resultado por conta, evolução por período, movimentação contábil, caixa/bancos e pendências/títulos. Ambos exigem `finance.dashboard.view`. Os atalhos dos cards abrem a Lista com o tipo de conta ou faixa de atraso correspondente, preservando período, filial, conta, regime e seleção de clientes/contratos. Filtros aplicados e visão selecionada ficam na URL para restaurar links diretos e histórico. A troca de submenu reaproveita a consulta carregada; alterar filtros ou atualizar consulta busca os dados novamente.
+
+Ao clicar em uma conta nas tabelas de resultado ou movimentação, um modal amplo consulta `GET /api/finance/account-details`, com a mesma permissão, período, filial e regime. Mostra os títulos a receber/pagar vinculados por `fn_movim_finan.id_receber/id_pagar`, documento, vencimento, cliente/fornecedor, valor original e contribuição de cada lançamento, incluindo baixas parciais e estornos. Os totais vêm de um único snapshot, com paginação de 10/25 lançamentos; títulos repetidos não multiplicam os totais. Lançamentos sem título são identificados. Resultado exclui transferências internas; movimentação preserva essas transferências. A seleção de clientes ativos restringe pendências, sem apagar receitas/despesas já contabilizadas. Se o total mudou desde a lista, o modal informa a diferença e pede atualização. A validação de leitura em 08/10/2026 confirmou a composição e a contagem em uma conta de receita e três de despesa, inclusive uma despesa sem títulos vinculados.
 
 Rotas IXC verificadas na coleção anexada e por consultas GET de amostra no ambiente configurado:
 

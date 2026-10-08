@@ -7,13 +7,17 @@ import { NetworkService, boxesQuery, boxLoginsQuery } from "../services/network/
 import { NetworkMonitor, connectionPermissions } from "../services/network/NetworkMonitor.js";
 import { LoginSignalService } from "../services/upgrades/LoginSignalService.js";
 import { env } from "../config/env.js";
+import { NetworkLoginService, loginListQuery } from "../services/network/NetworkLoginService.js";
+import { onuRoutes } from "./onuController.js";
 
-/** This module intentionally exposes only GET operations. */
+/** Reads remain separate from explicitly permissioned ONU operations. */
 export async function networkRoutes(app: FastifyInstance) {
+  await app.register(onuRoutes, { prefix: "/onus" });
   if (!app.hasDecorator("websocketServer")) await app.register(websocket, { options: { maxPayload: 4096 } });
   const auth = new AuthService(),
     db = new IxcReadDatabase(),
     service = new NetworkService(db),
+    logins = new NetworkLoginService(db),
     signals = new LoginSignalService(db);
   const monitor = new NetworkMonitor(db, async (token, scope) => {
     const user = await auth.authenticate({ headers: { authorization: `Bearer ${token}` } } as FastifyRequest);
@@ -64,6 +68,28 @@ export async function networkRoutes(app: FastifyInstance) {
     },
     (socket) => monitor.attach(socket)
   );
+  for (const path of ["/logins", "/logins/filters", "/logins/:loginId", "/logins/:loginId/signal"] as const)
+    app.get(path, { logLevel: "silent" }, async (request, reply) => {
+      await auth.requirePermission(request, "network.logins.list", ...(path.includes(":loginId") ? ["network.logins.view" as const] : []));
+      const controller = new AbortController();
+      const disconnected = () => {
+        if (!reply.raw.writableEnded) controller.abort();
+      };
+      reply.raw.on("close", disconnected);
+      try {
+        if (path === "/logins") return await logins.list(loginListQuery.parse(request.query), controller.signal);
+        if (path === "/logins/filters") return await logins.filters(controller.signal);
+        const loginId = z.object({ loginId: z.coerce.number().int().positive().safe() }).parse(request.params).loginId;
+        const result = await logins.detail(loginId, controller.signal);
+        if (path.endsWith("/signal")) {
+          if (!result.login.customerId) throw Object.assign(new Error("Cliente do login não encontrado."), { statusCode: 404 });
+          return await signals.read({ loginId, customerId: result.login.customerId, contractId: result.login.contractId });
+        }
+        return result;
+      } finally {
+        reply.raw.off("close", disconnected);
+      }
+    });
   for (const path of [
     "/boxes",
     "/boxes/:id",

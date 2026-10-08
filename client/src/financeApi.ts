@@ -67,7 +67,7 @@ export function financeBanks(params: URLSearchParams, signal?: AbortSignal): Pro
   return readFinance("banks", params, signal);
 }
 async function readFinance<T>(
-  path: "dashboard" | "banks" | "pending" | "options",
+  path: "dashboard" | "banks" | "pending" | "options" | "account-details",
   params: URLSearchParams,
   signal?: AbortSignal
 ): Promise<T> {
@@ -140,6 +140,46 @@ export interface FinancePending {
 }
 export function financePending(params: URLSearchParams, signal?: AbortSignal): Promise<FinancePending> {
   return readFinance("pending", params, signal);
+}
+
+export interface FinanceAccountDetail {
+  account: { id: number; name: string; type: string; classification: string };
+  basis: "result" | "ledger";
+  period: { from: string; to: string };
+  page: number;
+  limit: number;
+  total: number;
+  credit: number;
+  debit: number;
+  value: number;
+  receivableTitles: number;
+  payableTitles: number;
+  unlinked: number;
+  queriedAt: string;
+  items: {
+    id: string;
+    day: string | null;
+    document: string | null;
+    history: string | null;
+    branchId: number;
+    credit: number;
+    debit: number;
+    value: number;
+    titles: {
+      kind: "receivable" | "payable";
+      id: string;
+      document: string | null;
+      dueDate: string | null;
+      amount: number | null;
+      status: string | null;
+      partyId: number | null;
+      partyName: string | null;
+      contractId: number | null;
+    }[];
+  }[];
+}
+export function financeAccountDetail(params: URLSearchParams, signal?: AbortSignal): Promise<FinanceAccountDetail> {
+  return readFinance("account-details", params, signal);
 }
 
 export function financeOptions(signal?: AbortSignal): Promise<{

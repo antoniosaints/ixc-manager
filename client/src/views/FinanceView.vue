@@ -26,6 +26,7 @@ import LiveQueryState from "../components/LiveQueryState.vue";
 import FinancePending from "../components/FinancePending.vue";
 import FinanceBanks from "../components/FinanceBanks.vue";
 import FinanceTrend from "../components/FinanceTrend.vue";
+import FinanceAccountDetailDialog from "../components/FinanceAccountDetailDialog.vue";
 import { formatConsulted } from "../upgradesApi";
 const today = () => {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -69,6 +70,14 @@ const tab = ref<FinanceTab>(initialNavigation.selection.tab),
   accountSearch = ref(initialNavigation.selection.accountSearch),
   tablePage = ref(1);
 const tableLimit = ref(10);
+const selectedAccount = ref<{ id: number; name: string; value: number } | null>(null);
+const selectedBasis = ref<"result" | "ledger">("result");
+const selectedParams = ref(new URLSearchParams());
+function openAccount(account: { id: number; name: string; value: number }) {
+  selectedAccount.value = { ...account };
+  selectedBasis.value = tab.value === "ledger" ? "ledger" : "result";
+  selectedParams.value = new URLSearchParams(params.value);
+}
 const detailPanel = ref<HTMLElement>();
 const activePending = ref(initialNavigation.selection.pending);
 const pendingSelection = ref(initialNavigation.selection.pending);
@@ -599,9 +608,22 @@ function preset(kind: string) {
             </thead>
             <tbody class="divide-y divide-slate-100">
               <template v-if="tab !== 'series'"
-                ><tr v-for="account in pageAccounts" :key="account.id" class="hover:bg-slate-50">
+                ><tr
+                  v-for="account in pageAccounts"
+                  :key="account.id"
+                  class="cursor-pointer hover:bg-slate-50"
+                  @click="openAccount(account)"
+                >
                   <td class="max-w-64 !pl-4">
-                    <strong class="block truncate font-semibold" :title="account.name">{{ account.name }}</strong
+                    <button
+                      type="button"
+                      class="flex max-w-full items-center gap-1 text-left font-semibold text-primary"
+                      :title="account.name"
+                      :aria-label="`Ver títulos e lançamentos de ${account.name}`"
+                      @click.stop="openAccount(account)"
+                    >
+                      <span class="truncate">{{ account.name }}</span
+                      ><ArrowUpRight class="h-3.5 w-3.5 shrink-0" aria-hidden="true" /></button
                     ><span class="compact-secondary">#{{ account.id }} · {{ account.classification || "Sem classificação" }}</span>
                   </td>
                   <td>
@@ -669,5 +691,12 @@ function preset(kind: string) {
         }}
       </p>
     </template>
+    <FinanceAccountDetailDialog
+      v-if="selectedAccount"
+      :account="selectedAccount"
+      :params="selectedParams"
+      :basis="selectedBasis"
+      @close="selectedAccount = null"
+    />
   </div>
 </template>

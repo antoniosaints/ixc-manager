@@ -12,21 +12,25 @@ export const connectionSubscription = z.union([
   z.object({ ...credentials, scope: z.literal("customer"), module: z.literal("support"), customerId: id, loginIds: ids }).strict(),
   z.object({ ...credentials, scope: z.literal("login"), module: z.enum(["support", "upgrades"]), contractId: id, loginId: id }).strict(),
   z.object({ ...credentials, scope: z.literal("box-login"), boxId: id, loginId: id }).strict(),
+  z.object({ ...credentials, scope: z.literal("login-list"), loginIds: ids }).strict(),
 ]);
 export type ConnectionScope =
   | Omit<Extract<z.infer<typeof connectionSubscription>, { scope: "boxes" }>, "type" | "token">
   | Omit<Extract<z.infer<typeof connectionSubscription>, { scope: "customer" }>, "type" | "token">
   | Omit<Extract<z.infer<typeof connectionSubscription>, { scope: "login" }>, "type" | "token">
-  | Omit<Extract<z.infer<typeof connectionSubscription>, { scope: "box-login" }>, "type" | "token">;
+  | Omit<Extract<z.infer<typeof connectionSubscription>, { scope: "box-login" }>, "type" | "token">
+  | Omit<Extract<z.infer<typeof connectionSubscription>, { scope: "login-list" }>, "type" | "token">;
 /** Channel keys never contain tokens. Each shape carries only its authorized record scope. */
 export function subscriptionScope(input: z.infer<typeof connectionSubscription>): ConnectionScope {
   if (input.scope === "boxes") return { scope: input.scope, boxIds: input.boxIds };
+  if (input.scope === "login-list") return { scope: input.scope, loginIds: input.loginIds };
   if (input.scope === "customer")
     return { scope: input.scope, module: input.module, customerId: input.customerId, loginIds: input.loginIds };
   if (input.scope === "login") return { scope: input.scope, module: input.module, contractId: input.contractId, loginId: input.loginId };
   return { scope: input.scope, boxId: input.boxId, loginId: input.loginId };
 }
 export function connectionPermissions(scope: ConnectionScope) {
+  if (scope.scope === "login-list") return ["network.logins.list"] as const;
   if (scope.scope === "customer") return ["support.customer.view", "support.logins.view"] as const;
   if (scope.scope === "login")
     return scope.module === "support"

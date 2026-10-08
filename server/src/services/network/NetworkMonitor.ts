@@ -23,6 +23,9 @@ export function connectionMonitorSql(scope: ConnectionScope): IxcReadQuery {
   if (scope.scope === "boxes") {
     where = `r.id_caixa_ftth IN (${scope.boxIds.map(() => "?").join(",")})`;
     params = scope.boxIds;
+  } else if (scope.scope === "login-list") {
+    where = `r.id IN (${scope.loginIds.map(() => "?").join(",")})`;
+    params = scope.loginIds;
   } else if (scope.scope === "customer") {
     where = `r.id_cliente=? AND r.id IN (${scope.loginIds.map(() => "?").join(",")})`;
     params = [scope.customerId, ...scope.loginIds];

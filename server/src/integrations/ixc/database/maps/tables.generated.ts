@@ -1402,6 +1402,100 @@ export interface RadpopRadioClienteFibraRow {
   posicao_inconsistente: "N" | "S" | "" | null;
 }
 
+export interface RadpopRadioClienteFibraPerfilRow {
+  id: number;
+  nome: string;
+  comando: string;
+  fabricante_modelo: string | null;
+}
+
+export interface RadpopRadioPortaRow {
+  id: number;
+  interface: string;
+  ssid: string | null;
+  id_pop_radio: number;
+  canal: string | null;
+  sinal: string | null;
+  rssi: string | null;
+  noise: string | null;
+  chwidth: string | null;
+  distancia: string | null;
+  codigo_do_pais: string | null;
+  wds: string | null;
+  uptime: string | null;
+  mode: string | null;
+  mac: string | null;
+  dfs: string | null;
+  ack: string | null;
+  ccq: string | null;
+  txrate: string | null;
+  rxrate: string | null;
+  security: string | null;
+  speed_lan: string | null;
+  speed_wlan: string | null;
+  chains: string | null;
+  wpa: string | null;
+  pais: string | null;
+  frequency: string | null;
+  band: string | null;
+  conexao: "58" | "24" | "C" | "F" | "" | null;
+  mtu: number | null;
+  interface_type: string | null;
+  radio_name: string | null;
+  wireless_protocol: string | null;
+  data: IxcDateTime | null;
+  conexoes_ultima: number | null;
+  vlan_uplink: number | null;
+  id_slot: number | null;
+  potencia_pon: number | null;
+  numero_pon: number | null;
+  vlan_pppoe: string | null;
+  vlan_dhcp: string | null;
+  vlan_tr69: string | null;
+  vlan_voip: string | null;
+  vlan_iptv: string | null;
+  vlan_outros: string | null;
+  descricao: string | null;
+  potencia_limite: string | null;
+  quantidade_onus: number | null;
+  quantidade_onus_autorizadas: number | null;
+}
+
+export interface RadpopOltSlotRow {
+  id: number;
+  descricao: string | null;
+  numero_slot: number;
+  portas: number;
+  id_transmissor: number;
+}
+
+export interface RadHardwareRow {
+  id: number;
+  hardware: string;
+  tipo: "R" | "F" | "";
+  obs: string | null;
+  ativo: "S" | "N" | "" | null;
+  script: string | null;
+  porta_ssh: number | null;
+  porta_telnet: number | null;
+  login: string | null;
+  fabricante: string | null;
+  qtd_portas: number | null;
+  imagem: string | null;
+  hardware_tipo: string | null;
+}
+
+export interface DfProjetoRow {
+  id: number;
+  nome: string;
+  latitude: string;
+  longitude: string;
+  zoom: number;
+  status: "A" | "I" | "";
+  id_filial: number | null;
+  cor_mapa: string | null;
+}
+
 export interface RadacctRow {
   radacctid: IxcBigInt;
   acctsessionid: string;
@@ -2530,6 +2624,11 @@ export interface IxcTableRows {
   rad_caixa_ftth: RadCaixaFtthRow;
   radpop_radio: RadpopRadioRow;
   radpop_radio_cliente_fibra: RadpopRadioClienteFibraRow;
+  radpop_radio_cliente_fibra_perfil: RadpopRadioClienteFibraPerfilRow;
+  radpop_radio_porta: RadpopRadioPortaRow;
+  radpop_olt_slot: RadpopOltSlotRow;
+  rad_hardware: RadHardwareRow;
+  df_projeto: DfProjetoRow;
   radacct: RadacctRow;
   radusuarios_consumo_m: RadusuariosConsumoMRow;
   su_ticket: SuTicketRow;
@@ -9199,6 +9298,404 @@ export const ixcTables = {
         columnName: "mac",
         type: "BTREE",
       },
+      {
+        name: "PRIMARY",
+        nonUnique: "0",
+        position: "1",
+        columnName: "id",
+        type: "BTREE",
+      },
+    ],
+    foreignKeys: [],
+  },
+  radpop_radio_cliente_fibra_perfil: {
+    primaryKey: ["id"],
+    columns: {
+      id: {
+        type: "int(11)",
+        nullable: false,
+      },
+      nome: {
+        type: "varchar(100)",
+        nullable: false,
+      },
+      comando: {
+        type: "text",
+        nullable: false,
+      },
+      fabricante_modelo: {
+        type: "varchar(25)",
+        nullable: true,
+      },
+    },
+    indexes: [
+      {
+        name: "PRIMARY",
+        nonUnique: "0",
+        position: "1",
+        columnName: "id",
+        type: "BTREE",
+      },
+    ],
+    foreignKeys: [],
+  },
+  radpop_radio_porta: {
+    primaryKey: ["id"],
+    columns: {
+      id: {
+        type: "int(11)",
+        nullable: false,
+      },
+      interface: {
+        type: "varchar(100)",
+        nullable: false,
+      },
+      ssid: {
+        type: "varchar(100)",
+        nullable: true,
+      },
+      id_pop_radio: {
+        type: "int(11)",
+        nullable: false,
+      },
+      canal: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      sinal: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      rssi: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      noise: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      chwidth: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      distancia: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      codigo_do_pais: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      wds: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      uptime: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      mode: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      mac: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      dfs: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      ack: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      ccq: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      txrate: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      rxrate: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      security: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      speed_lan: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      speed_wlan: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      chains: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      wpa: {
+        type: "varchar(30)",
+        nullable: true,
+      },
+      pais: {
+        type: "varchar(50)",
+        nullable: true,
+      },
+      frequency: {
+        type: "varchar(50)",
+        nullable: true,
+      },
+      band: {
+        type: "varchar(50)",
+        nullable: true,
+      },
+      conexao: {
+        type: "enum('58','24','C','F')",
+        nullable: true,
+      },
+      mtu: {
+        type: "int(11)",
+        nullable: true,
+      },
+      interface_type: {
+        type: "varchar(50)",
+        nullable: true,
+      },
+      radio_name: {
+        type: "varchar(50)",
+        nullable: true,
+      },
+      wireless_protocol: {
+        type: "varchar(50)",
+        nullable: true,
+      },
+      data: {
+        type: "datetime",
+        nullable: true,
+      },
+      conexoes_ultima: {
+        type: "int(11)",
+        nullable: true,
+      },
+      vlan_uplink: {
+        type: "int(11)",
+        nullable: true,
+      },
+      id_slot: {
+        type: "int(11)",
+        nullable: true,
+      },
+      potencia_pon: {
+        type: "double(5,2)",
+        nullable: true,
+      },
+      numero_pon: {
+        type: "int(11)",
+        nullable: true,
+      },
+      vlan_pppoe: {
+        type: "varchar(20)",
+        nullable: true,
+      },
+      vlan_dhcp: {
+        type: "varchar(20)",
+        nullable: true,
+      },
+      vlan_tr69: {
+        type: "varchar(20)",
+        nullable: true,
+      },
+      vlan_voip: {
+        type: "varchar(20)",
+        nullable: true,
+      },
+      vlan_iptv: {
+        type: "varchar(20)",
+        nullable: true,
+      },
+      vlan_outros: {
+        type: "varchar(20)",
+        nullable: true,
+      },
+      descricao: {
+        type: "varchar(50)",
+        nullable: true,
+      },
+      potencia_limite: {
+        type: "varchar(6)",
+        nullable: true,
+      },
+      quantidade_onus: {
+        type: "smallint(5) unsigned",
+        nullable: true,
+      },
+      quantidade_onus_autorizadas: {
+        type: "int(10) unsigned",
+        nullable: true,
+      },
+    },
+    indexes: [
+      {
+        name: "id_pop_radio",
+        nonUnique: "1",
+        position: "1",
+        columnName: "id_pop_radio",
+        type: "BTREE",
+      },
+      {
+        name: "PRIMARY",
+        nonUnique: "0",
+        position: "1",
+        columnName: "id",
+        type: "BTREE",
+      },
+    ],
+    foreignKeys: [],
+  },
+  radpop_olt_slot: {
+    primaryKey: ["id"],
+    columns: {
+      id: {
+        type: "int(11)",
+        nullable: false,
+      },
+      descricao: {
+        type: "varchar(100)",
+        nullable: true,
+      },
+      numero_slot: {
+        type: "int(11)",
+        nullable: false,
+      },
+      portas: {
+        type: "int(11)",
+        nullable: false,
+      },
+      id_transmissor: {
+        type: "int(11)",
+        nullable: false,
+      },
+    },
+    indexes: [
+      {
+        name: "PRIMARY",
+        nonUnique: "0",
+        position: "1",
+        columnName: "id",
+        type: "BTREE",
+      },
+    ],
+    foreignKeys: [],
+  },
+  rad_hardware: {
+    primaryKey: ["id"],
+    columns: {
+      id: {
+        type: "int(11)",
+        nullable: false,
+      },
+      hardware: {
+        type: "varchar(100)",
+        nullable: false,
+      },
+      tipo: {
+        type: "enum('R','F')",
+        nullable: false,
+      },
+      obs: {
+        type: "varchar(200)",
+        nullable: true,
+      },
+      ativo: {
+        type: "enum('S','N')",
+        nullable: true,
+      },
+      script: {
+        type: "longtext",
+        nullable: true,
+      },
+      porta_ssh: {
+        type: "int(11)",
+        nullable: true,
+      },
+      porta_telnet: {
+        type: "int(11)",
+        nullable: true,
+      },
+      login: {
+        type: "varchar(100)",
+        nullable: true,
+      },
+      fabricante: {
+        type: "varchar(100)",
+        nullable: true,
+      },
+      qtd_portas: {
+        type: "int(20)",
+        nullable: true,
+      },
+      imagem: {
+        type: "varchar(500)",
+        nullable: true,
+      },
+      hardware_tipo: {
+        type: "varchar(50)",
+        nullable: true,
+      },
+    },
+    indexes: [
+      {
+        name: "PRIMARY",
+        nonUnique: "0",
+        position: "1",
+        columnName: "id",
+        type: "BTREE",
+      },
+    ],
+    foreignKeys: [],
+  },
+  df_projeto: {
+    primaryKey: ["id"],
+    columns: {
+      id: {
+        type: "int(11)",
+        nullable: false,
+      },
+      nome: {
+        type: "varchar(100)",
+        nullable: false,
+      },
+      latitude: {
+        type: "varchar(45)",
+        nullable: false,
+      },
+      longitude: {
+        type: "varchar(45)",
+        nullable: false,
+      },
+      zoom: {
+        type: "int(11)",
+        nullable: false,
+      },
+      status: {
+        type: "enum('A','I')",
+        nullable: false,
+      },
+      id_filial: {
+        type: "int(11)",
+        nullable: true,
+      },
+      cor_mapa: {
+        type: "varchar(45)",
+        nullable: true,
+      },
+    },
+    indexes: [
       {
         name: "PRIMARY",
         nonUnique: "0",

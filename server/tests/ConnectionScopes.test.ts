@@ -70,6 +70,7 @@ describe("Conexões por IP, com escopo de cliente e login", () => {
     { scope: "login", module: "support", contractId: 10, loginId: 1 },
     { scope: "login", module: "upgrades", contractId: 10, loginId: 1 },
     { scope: "box-login", boxId: 25, loginId: 2 },
+    { scope: "login-list", loginIds: [1, 2, 3] },
   ] as const)
     it(`protege o escopo ${scope.scope} ${"module" in scope ? scope.module : "network"} com permissões próprias`, async () => {
       const db = fixture();
@@ -117,7 +118,9 @@ describe("Conexões por IP, com escopo de cliente e login", () => {
         await vi.waitFor(() => expect(messages[0]?.type).toBe("state"));
         expect(messages[0]?.snapshot).toBe(true);
         expect(messages[0]?.offlineCount).toBe(0);
-        expect(messages[0]?.connections.map((r: any) => r.id)).toEqual(scope.scope === "customer" ? [1, 2] : [scope.loginId]);
+        expect(messages[0]?.connections.map((r: any) => r.id)).toEqual(
+          scope.scope === "customer" ? [1, 2] : scope.scope === "login-list" ? [1, 2, 3] : [scope.loginId]
+        );
         expect(JSON.stringify(messages)).not.toMatch(/senha|ONU|customerName/i);
         permissions = [];
         const closed = new Promise<number>((resolve) => socket.once("close", resolve));

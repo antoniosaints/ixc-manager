@@ -6,13 +6,15 @@ import { financeQuery } from "../services/finance/FinanceService.js";
 import { FinancePendingService, pendingQuery } from "../services/finance/FinancePendingService.js";
 import { IxcReadDatabase } from "../integrations/ixc/database/IxcReadDatabase.js";
 import { FinanceSqlService } from "../services/finance/FinanceSqlService.js";
+import { FinanceAccountDetailService, accountDetailQuery } from "../services/finance/FinanceAccountDetailService.js";
 
 /** Finance intentionally registers only GET routes. */
 export async function financeRoutes(app: FastifyInstance) {
   const auth = new AuthService(),
     database = new IxcReadDatabase(),
     service = new FinanceSqlService(database),
-    pending = new FinancePendingService(database);
+    pending = new FinancePendingService(database),
+    composition = new FinanceAccountDetailService(database);
   app.addHook("onClose", async () => {
     await database.close();
   });
@@ -64,5 +66,19 @@ export async function financeRoutes(app: FastifyInstance) {
     }
   });
   app.get("/dashboard", { logLevel: "silent" }, read("dashboard"));
+  app.get("/account-details", { logLevel: "silent" }, async (request, reply) => {
+    await auth.requirePermission(request, "finance.dashboard.view");
+    const query = accountDetailQuery.parse(request.query);
+    const controller = new AbortController();
+    const disconnected = () => {
+      if (!reply.raw.writableEnded) controller.abort();
+    };
+    reply.raw.on("close", disconnected);
+    try {
+      return await composition.list(query, controller.signal);
+    } finally {
+      reply.raw.off("close", disconnected);
+    }
+  });
   app.get("/banks", { logLevel: "silent" }, read("banks"));
 }

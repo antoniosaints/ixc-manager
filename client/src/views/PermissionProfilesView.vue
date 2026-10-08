@@ -44,8 +44,10 @@ async function save() {
     saving.value = false;
   }
 }
-function preset(role: string) {
-  form.permissions = [...(access.value?.defaults[role] ?? [])];
+function preset(key: string) {
+  const preset = access.value?.presets.find((item) => item.key === key);
+  form.permissions = [...(preset?.permissions ?? access.value?.defaults[key] ?? [])];
+  if (!id.value && !form.name && preset) Object.assign(form, { name: preset.name, description: preset.description });
 }
 onMounted(load);
 </script>
@@ -111,8 +113,15 @@ onMounted(load);
       </div>
       <div class="my-4 flex flex-wrap items-center gap-2 text-xs">
         <span class="text-slate-500">Começar com:</span
-        ><button v-for="role in ['USER', 'OPERATOR', 'MANAGER']" :key="role" type="button" class="button-secondary" @click="preset(role)">
-          {{ role === "USER" ? "Usuário" : role === "OPERATOR" ? "Operador" : "Gestor" }}</button
+        ><button
+          v-for="item in access.presets"
+          :key="item.key"
+          type="button"
+          class="button-secondary"
+          :title="item.description"
+          @click="preset(item.key)"
+        >
+          {{ item.name }}</button
         ><button type="button" class="text-slate-500 underline" @click="form.permissions = []">
           <RotateCcw class="inline h-3.5 w-3.5 shrink-0 align-middle" aria-hidden="true" focusable="false" /> Limpar
         </button>
@@ -133,7 +142,9 @@ onMounted(load);
       Anotar, resolver, reabrir e exportar o PDF de Churn exigem acesso aos detalhes do cliente; exportar listas de Upgrades exige acesso às
       oportunidades. Logins exigem detalhes do contrato; senhas e atalhos de equipamentos também exigem acesso aos logins. No Suporte, as
       abas do cliente exigem acesso ao cadastro; comodatos exigem acesso ao contrato. Acessar um equipamento exige também permissão de
-      senhas. Configurações é exclusiva de Administradores e não pode ser concedida por um perfil.
+      senhas. Em Rede, a lista geral exige sua própria permissão; os detalhes exigem também dados técnicos. Caixas e mapas dependem da
+      permissão de caixas. Os modelos não concedem senhas ou acesso a equipamentos. Configurações é exclusiva de Administradores e não pode
+      ser concedida por um perfil.
     </p>
     <p v-if="id" class="mt-2 text-[11px] text-amber-700">
       Salvar altera o acesso dos usuários vinculados a este perfil nas próximas requisições.

@@ -53,6 +53,19 @@ export interface NetworkBoxes extends LivePage<NetworkBox> {
 export interface NetworkLogins extends LivePage<NetworkLogin> {
   box: NetworkBox;
 }
+export interface NetworkLoginRow extends NetworkLogin {
+  customerDocument: string | null;
+  ftthBoxId: number | null;
+  ftthBoxName: string | null;
+  ftthBoxSource: "login" | "onu";
+  cityId: number | null;
+  city: string | null;
+  branchId: number | null;
+  branch: string | null;
+}
+export interface NetworkLoginList extends LivePage<NetworkLoginRow> {
+  summary: { total: number; activeLogins: number; inactiveLogins: number; onlineLogins: number; offlineLogins: number };
+}
 async function read<T>(path: string, params: URLSearchParams, signal?: AbortSignal): Promise<T> {
   const token = localStorage.getItem("retencao-cas.auth-token");
   const response = await fetch(`/api/network${path}?${params}`, {
@@ -67,6 +80,16 @@ async function read<T>(path: string, params: URLSearchParams, signal?: AbortSign
   return response.json();
 }
 export const networkApi = {
+  list: (params: URLSearchParams, signal?: AbortSignal) => read<NetworkLoginList>("/logins", params, signal),
+  listFilters: (signal?: AbortSignal) =>
+    read<{ cities: { id: number; name: string }[]; branches: { id: number; name: string }[] }>(
+      "/logins/filters",
+      new URLSearchParams(),
+      signal
+    ),
+  directLogin: (id: number, signal?: AbortSignal) =>
+    read<{ login: NetworkLoginRow; queriedAt: string }>(`/logins/${id}`, new URLSearchParams(), signal),
+  directSignal: (id: number, signal?: AbortSignal) => read<LoginSignalDetails>(`/logins/${id}/signal`, new URLSearchParams(), signal),
   loginSignal: (boxId: number, loginId: number, signal?: AbortSignal) =>
     read<LoginSignalDetails>(`/boxes/${boxId}/logins/${loginId}/signal`, new URLSearchParams(), signal),
   box: (id: number, signal?: AbortSignal) => read<{ box: NetworkBox; queriedAt: string }>(`/boxes/${id}`, new URLSearchParams(), signal),

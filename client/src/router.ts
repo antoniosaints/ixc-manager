@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import NetworkView from "./views/NetworkView.vue";
+import NetworkOnusView from "./views/NetworkOnusView.vue";
+import NetworkLoginsView from "./views/NetworkLoginsView.vue";
 import FinanceView from "./views/FinanceView.vue";
 import CollectionsView from "./views/CollectionsView.vue";
 import DashboardView from "./views/DashboardView.vue";
@@ -24,6 +26,8 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/network", component: NetworkView, meta: { module: "network", permission: "network.boxes.view" } },
+    { path: "/network/onus", component: NetworkOnusView, meta: { module: "network", permission: "network.onus.view" } },
+    { path: "/network/logins", component: NetworkLoginsView, meta: { module: "network", permission: "network.logins.list" } },
     { path: "/collections", component: CollectionsView, meta: { module: "collections", permission: "collections.customers.view" } },
     { path: "/finance", component: FinanceView, meta: { module: "finance", permission: "finance.dashboard.view" } },
     {

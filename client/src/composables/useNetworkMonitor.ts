@@ -13,6 +13,7 @@ export interface ConnectionUpdate extends OfflineEvent {
   ip: string | null;
 }
 export type ConnectionScope =
+  | { scope: "login-list"; loginIds: number[] }
   | { scope: "customer"; module: "support"; customerId: number; loginIds: number[] }
   | { scope: "login"; module: "support" | "upgrades"; contractId: number; loginId: number }
   | { scope: "box-login"; boxId: number; loginId: number };
@@ -64,11 +65,13 @@ export function useNetworkMonitor(options: {
     const scope = subscription();
     if (!scope) return false;
     const permissions =
-      "boxIds" in scope || scope.scope === "box-login"
-        ? ["network.boxes.view", "network.logins.view"]
-        : scope.scope === "customer"
-          ? ["support.customer.view", "support.logins.view"]
-          : [`${scope.module}.contract.view`, `${scope.module}.logins.view`];
+      "scope" in scope && scope.scope === "login-list"
+        ? ["network.logins.list"]
+        : "boxIds" in scope || scope.scope === "box-login"
+          ? ["network.boxes.view", "network.logins.view"]
+          : scope.scope === "customer"
+            ? ["support.customer.view", "support.logins.view"]
+            : [`${scope.module}.contract.view`, `${scope.module}.logins.view`];
     return permissions.every((permission) => auth.can(permission));
   };
   function stop() {

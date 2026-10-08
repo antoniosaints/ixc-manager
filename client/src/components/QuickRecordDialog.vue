@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent } from "vue";
+import { computed, defineAsyncComponent, ref, watch } from "vue";
 import { FileText, Network, Headset, Wrench, ReceiptText } from "lucide-vue-next";
 import { type RecordTarget } from "../recordNavigation";
 import RecordDetailDialog from "./RecordDetailDialog.vue";
@@ -10,9 +10,16 @@ const Contract = defineAsyncComponent(() => import("./SupportContractDetail.vue"
 const Login = defineAsyncComponent(() => import("./QuickLoginDetail.vue"));
 const Case = defineAsyncComponent(() => import("./SupportCaseDetail.vue"));
 const Collection = defineAsyncComponent(() => import("./CollectionCustomerDetail.vue"));
+const loginName = ref("");
+watch(
+  () => props.target,
+  () => {
+    loginName.value = "";
+  }
+);
 const title = computed(
   () =>
-    `${{ box: "Caixa", contract: "Contrato", login: "Login", orders: "Ordem de serviço", tickets: "Atendimento", collection: "Cobranças do cliente" }[props.target.kind]} #${props.target.id}`
+    `${{ box: "Caixa", contract: "Contrato", login: "Login", orders: "Ordem de serviço", tickets: "Atendimento", collection: "Cobranças do cliente" }[props.target.kind]} #${props.target.id}${props.target.kind === "login" && loginName.value ? ` · ${loginName.value}` : ""}`
 );
 const icon = computed(
   () => ({ box: Network, contract: FileText, login: Network, orders: Wrench, tickets: Headset, collection: ReceiptText })[props.target.kind]
@@ -29,7 +36,13 @@ const icon = computed(
     @close="emit('close')"
   >
     <Contract v-if="target.kind === 'contract'" :contract-id="String(target.id)" :module="target.module" />
-    <Login v-else-if="target.kind === 'login'" :contract-id="target.contractId" :login-id="target.id" />
+    <Login
+      v-else-if="target.kind === 'login'"
+      :key="`${target.contractId}-${target.id}`"
+      :contract-id="target.contractId"
+      :login-id="target.id"
+      @loaded="loginName = $event"
+    />
     <Case
       v-else-if="target.kind === 'orders' || target.kind === 'tickets'"
       :customer-id="String(target.customerId)"

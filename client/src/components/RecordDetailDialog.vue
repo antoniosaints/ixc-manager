@@ -8,7 +8,7 @@ const props = withDefaults(
     title: string;
     subtitle?: string;
     icon: Component;
-    module: "support" | "upgrades" | "collections" | "network";
+    module: "support" | "upgrades" | "collections" | "network" | "finance";
     compact?: boolean;
     closeOnBackdrop?: boolean;
   }>(),

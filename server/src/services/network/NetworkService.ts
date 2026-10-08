@@ -168,7 +168,7 @@ export function networkBoxDto(row: Row) {
     invalidPorts: number(row.invalidPorts),
   };
 }
-function networkLoginDto(row: Row) {
+export function networkLoginDto(row: Row) {
   return {
     id: number(row.id),
     login: text(row.login),

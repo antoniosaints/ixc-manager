@@ -351,8 +351,8 @@ const statusLabel = (status: string) => (status === "online" ? "Online" : status
     <RecordDetailDialog
       ref="loginDialog"
       v-if="selectedLogin && auth.can('network.logins.view')"
-      :title="selectedLogin.login ?? `Login #${selectedLogin.id}`"
-      :subtitle="`Login #${selectedLogin.id} · ${data?.box.name ?? boxName} · Porta ${selectedLogin.port ?? 'não informada'}`"
+      :title="`Login #${selectedLogin.id}${selectedLogin.login ? ` · ${selectedLogin.login}` : ''}`"
+      :subtitle="`${data?.box.name ?? boxName} · Porta ${selectedLogin.port ?? 'não informada'}`"
       :icon="Network"
       module="network"
       @close="selectedLogin = null"

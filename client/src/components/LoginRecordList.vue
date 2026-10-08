@@ -76,8 +76,8 @@ function close() {
   <RecordDetailDialog
     v-if="selected"
     :key="`${module}-${selected.id}`"
-    :title="`Login #${selected.id}`"
-    :subtitle="`${selected.login ?? 'Login não informado'} · ${selected.contractId ? `Contrato #${selected.contractId}` : 'Sem contrato vinculado'}`"
+    :title="`Login #${selected.id}${selected.login ? ` · ${selected.login}` : ''}`"
+    :subtitle="selected.contractId ? `Contrato #${selected.contractId}` : 'Sem contrato vinculado'"
     :icon="Network"
     :module="module"
     @close="close"
