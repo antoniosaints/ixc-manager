@@ -1,3 +1,4 @@
+import { apiFetch } from "./http";
 import type { LivePage, LoginSignalDetails } from "./upgradesApi";
 export interface NetworkBox {
   id: number;
@@ -68,7 +69,7 @@ export interface NetworkLoginList extends LivePage<NetworkLoginRow> {
 }
 async function read<T>(path: string, params: URLSearchParams, signal?: AbortSignal): Promise<T> {
   const token = localStorage.getItem("retencao-cas.auth-token");
-  const response = await fetch(`/api/network${path}?${params}`, {
+  const response = await apiFetch(`/api/network${path}?${params}`, {
     signal,
     cache: "no-store",
     headers: token ? { Authorization: `Bearer ${token}` } : {},

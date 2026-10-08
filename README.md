@@ -100,6 +100,28 @@ API: `http://localhost:3000`. Dashboard: `http://localhost:5173`.
 
 Para acessar pela rede interna, abra `http://<IP-local-do-computador>:5173` em outro dispositivo da mesma rede. O frontend e a API escutam em `0.0.0.0`; as consultas e o WebSocket passam pelo endereço do dashboard, mantendo autenticação e permissões. Não é necessário mudar `CORS_ORIGIN` para esse acesso. O IP pode mudar conforme o DHCP da rede. Se outro dispositivo não conectar, verifique a liberação da porta TCP 5173 no firewall e o isolamento entre dispositivos no Wi-Fi.
 
+### Build e produção no Easypanel
+
+Use `npm run build` (ou `build:all`) para compilar os dois workspaces. Os comandos `npm run build:backend` e `npm run build:frontend` compilam cada um separadamente. Os scripts de instalação incluem as dependências de desenvolvimento necessárias ao build, mesmo quando `NODE_ENV=production`.
+
+Em desenvolvimento, `npm run dev` usa Vite na porta 5173 com proxy `/api` e WebSocket para a porta `PORT` do backend (3000 por padrão), lida do ambiente/`.env`. Em produção, **`npm start`** inicia o Fastify em `0.0.0.0:PORT` e serve o `client/dist` compilado junto da API. As URLs do navegador continuam relativas e o monitor usa o host/protocolo da página; não há domínio de backend ou credenciais embutidos no frontend. `npm run start:backend` é um alias para o mesmo processo; sem `client/dist`, ele continua disponível apenas como API. `FRONTEND_DIST` permite apontar para outro diretório compilado, como `/var/www/dist`.
+
+Para o serviço que usa a pasta `code`, configure os comandos separados no Easypanel:
+
+```sh
+# Build (ou script de atualização)
+cd code && git pull && npm run install:all && npm run build
+
+# Processo de inicialização mantido pelo Easypanel
+cd code && npm start
+```
+
+Se o diretório de trabalho já for a raiz do repositório, retire `cd code` (e `git pull` quando o próprio builder clonar o repositório). No serviço App, configure instalação `npm ci --include=dev`, build `npm run build` e inicialização `npm start`. Use Node.js 24 e mantenha as variáveis privadas de IXC/MySQL/Redis no ambiente do backend. As fontes de `server/assets/fonts` devem acompanhar o deploy.
+
+Em **Domains**, direcione `analitc.ngoezu.easypanel.host` para o processo Node na porta interna **3000** (ou o valor de `PORT`), com protocolo interno HTTP. O HTTPS público é terminado pelo Easypanel; o WebSocket usa WSS no navegador. Compilar e copiar apenas `client/dist` para um servidor estático não inicia a API. A configuração `server.proxy` do Vite funciona no desenvolvimento, não em um site estático compilado ([Vite](https://vite.dev/config/server-options)). A porta do domínio deve coincidir com a porta do processo ([Easypanel](https://easypanel.io/docs/services/app)).
+
+Após o deploy, `/health` deve retornar `{"status":"ok"}` com `Content-Type: application/json`; `/api/auth/me` sem sessão deve retornar 401 JSON, nunca HTML. Uma atualização direta em `/finance/list` deve abrir o frontend. O servidor preserva as rotas e permissões da API, recusa arquivos privados, não transforma endpoints `/api` inexistentes em HTML e mantém o `index.html` sem cache para evitar builds antigos.
+
 ## Decisões importantes
 
 - O motor é determinístico e cada ponto gera um fator explicável.

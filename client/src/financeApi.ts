@@ -1,3 +1,4 @@
+import { apiFetch } from "./http";
 export interface FinanceAccount {
   id: number;
   name: string;
@@ -82,7 +83,7 @@ async function readFinance<T>(
     controller.abort();
   }, 80_000);
   try {
-    const response = await fetch(`/api/finance/${path}?${params}`, {
+    const response = await apiFetch(`/api/finance/${path}?${params}`, {
       signal: controller.signal,
       cache: "no-store",
       headers: token ? { Authorization: `Bearer ${token}` } : {},

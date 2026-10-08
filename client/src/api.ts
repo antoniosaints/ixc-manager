@@ -1,3 +1,4 @@
+import { apiFetch } from "./http";
 export type RiskLevel = "LOW" | "ATTENTION" | "MEDIUM" | "HIGH" | "CRITICAL";
 export interface RetentionSummary {
   activeCustomers: number | null;
@@ -74,7 +75,7 @@ const requestHeaders = (headers?: HeadersInit) => {
   return merged;
 };
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(`/api/retention${path}`, { ...init, headers: requestHeaders(init?.headers) });
+  const response = await apiFetch(`/api/retention${path}`, { ...init, headers: requestHeaders(init?.headers) });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     throw new Error(body?.message ?? "Não foi possível concluir a solicitação.");
@@ -82,7 +83,7 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return response.json() as Promise<T>;
 };
 const authRequest = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(`/api/auth${path}`, { ...init, headers: requestHeaders(init?.headers) });
+  const response = await apiFetch(`/api/auth${path}`, { ...init, headers: requestHeaders(init?.headers) });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     throw new Error(body?.message ?? "Não foi possível concluir a solicitação.");
@@ -108,7 +109,7 @@ export const api = {
   customer: (id: number, contractId?: number, signal?: AbortSignal) =>
     request<any>(`/customers/${id}${contractId ? `?contractId=${contractId}` : ""}`, { signal }),
   customerPdf: async (id: number, contractId: number, signal?: AbortSignal): Promise<Blob> => {
-    const response = await fetch(`/api/retention/customers/${id}/pdf?contractId=${contractId}`, {
+    const response = await apiFetch(`/api/retention/customers/${id}/pdf?contractId=${contractId}`, {
       headers: requestHeaders(),
       cache: "no-store",
       signal,

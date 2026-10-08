@@ -1,3 +1,4 @@
+import { apiFetch } from "./http";
 export interface PendingOnu {
   pendingId: string;
   oltId: number;
@@ -107,7 +108,7 @@ export interface OnuOperationResult {
 }
 async function request<T>(path: string, params?: URLSearchParams, body?: unknown, signal?: AbortSignal): Promise<T> {
   const token = localStorage.getItem("retencao-cas.auth-token");
-  const response = await fetch(`/api/network/onus${path}${params ? `?${params}` : ""}`, {
+  const response = await apiFetch(`/api/network/onus${path}${params ? `?${params}` : ""}`, {
     method: body === undefined ? "GET" : "POST",
     signal,
     cache: "no-store",

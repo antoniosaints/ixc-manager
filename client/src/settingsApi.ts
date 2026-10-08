@@ -1,3 +1,4 @@
+import { apiFetch } from "./http";
 import { defaultTypography, type Typography } from "./typography";
 export interface Palette {
   background: string;
@@ -67,7 +68,7 @@ export const defaultAppearance: Appearance = {
 };
 async function request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
   const token = localStorage.getItem("retencao-cas.auth-token");
-  const response = await fetch(`/api/settings${path}`, {
+  const response = await apiFetch(`/api/settings${path}`, {
     method,
     cache: "no-store",
     headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },

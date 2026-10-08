@@ -1,3 +1,4 @@
+import { apiFetch } from "./http";
 export interface UpgradeContract {
   contractId: number;
   customerId: number;
@@ -152,7 +153,7 @@ export interface LivePage<T> {
 
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const token = localStorage.getItem("retencao-cas.auth-token");
-  const response = await fetch(`/api/upgrades${path}`, {
+  const response = await apiFetch(`/api/upgrades${path}`, {
     signal,
     cache: "no-store",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -166,7 +167,7 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 export function createTechnicalApi(base: string) {
   async function getTechnical<T>(path: string, signal?: AbortSignal): Promise<T> {
     const token = localStorage.getItem("retencao-cas.auth-token");
-    const response = await fetch(`${base}${path}`, {
+    const response = await apiFetch(`${base}${path}`, {
       signal,
       cache: "no-store",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -200,7 +201,7 @@ export function createTechnicalApi(base: string) {
       signal?: AbortSignal
     ): Promise<{ url: string; password: string }> => {
       const token = localStorage.getItem("retencao-cas.auth-token");
-      const response = await fetch(`${base}/contracts/${encodeURIComponent(id)}/logins/${loginId}/access`, {
+      const response = await apiFetch(`${base}/contracts/${encodeURIComponent(id)}/logins/${loginId}/access`, {
         method: "POST",
         signal,
         cache: "no-store",
@@ -229,7 +230,7 @@ export const upgradesApi = {
     signal?: AbortSignal
   ): Promise<Blob> => {
     const token = localStorage.getItem("retencao-cas.auth-token");
-    const response = await fetch("/api/upgrades/export", {
+    const response = await apiFetch("/api/upgrades/export", {
       method: "POST",
       signal,
       cache: "no-store",

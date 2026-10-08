@@ -12,6 +12,7 @@ import { collectionsRoutes } from "./controllers/collectionsController.js";
 import { upgradeRoutes } from "./controllers/upgradeController.js";
 import { scheduleRetentionJobs } from "./queues/retentionQueue.js";
 import "./workers/retentionWorker.js";
+import { registerFrontend } from "./http/frontend.js";
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: env.CORS_ORIGIN });
@@ -25,6 +26,7 @@ await app.register(networkRoutes, { prefix: "/api/network", logLevel: "silent" }
 await app.register(financeRoutes, { prefix: "/api/finance", logLevel: "silent" });
 await app.register(collectionsRoutes, { prefix: "/api/collections", logLevel: "silent" });
 app.get("/health", async () => ({ status: "ok" }));
+await registerFrontend(app, env.FRONTEND_DIST);
 await app.listen({ port: env.PORT, host: "0.0.0.0" });
 
 // The API remains available for reads even when the background queue is

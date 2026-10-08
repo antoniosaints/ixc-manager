@@ -40,6 +40,7 @@ const schema = z.object({
   RETENTION_SYNC_BATCH_SIZE: z.coerce.number().int().min(50).max(1_000).default(500),
   RETENTION_SYNC_OVERLAP_DAYS: z.coerce.number().int().min(1).max(30).default(7),
   PORT: z.coerce.number().int().positive().default(3000),
+  FRONTEND_DIST: z.string().min(1).optional(),
   CORS_ORIGIN: z.string().url().default("http://localhost:5173"),
 });
 

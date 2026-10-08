@@ -1,3 +1,4 @@
+import { apiFetch } from "./http";
 import type { ContractContact } from "./upgradesApi";
 export interface CollectionCustomer {
   id: number;
@@ -60,7 +61,7 @@ export interface CollectionDetail {
 }
 async function request(path: string, signal?: AbortSignal, body?: unknown) {
   const token = localStorage.getItem("retencao-cas.auth-token");
-  const response = await fetch(`/api/collections${path}`, {
+  const response = await apiFetch(`/api/collections${path}`, {
     signal,
     cache: "no-store",
     method: body ? "POST" : "GET",

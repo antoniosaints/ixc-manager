@@ -1,3 +1,4 @@
+import { apiFetch } from "./http";
 import { createTechnicalApi, type ContractContact, type LivePage, type UpgradeLogin } from "./upgradesApi";
 export interface SupportCustomer {
   id: number;
@@ -122,7 +123,7 @@ export interface SupportComodato {
 }
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const token = localStorage.getItem("retencao-cas.auth-token");
-  const response = await fetch(`/api/support${path}`, {
+  const response = await apiFetch(`/api/support${path}`, {
     signal,
     cache: "no-store",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
