@@ -109,12 +109,14 @@ Em desenvolvimento, `npm run dev` usa Vite na porta 5173 com proxy `/api` e WebS
 Configure `VITE_BACKEND_URL` no `.env` da **raiz** ou no ambiente de build do frontend para informar a URL pública do backend:
 
 ```env
-VITE_BACKEND_URL=https://analitc.ngoezu.easypanel.host
+VITE_BACKEND_URL=https://apianalitc.ngoezu.easypanel.host
 ```
 
 O valor deve apontar para o serviço que atende `/api`, com HTTP/HTTPS; também aceita a URL terminada em `/api`. Todas as consultas, downloads de PDF e o WebSocket usam esse destino no build de produção (HTTPS gera WSS). Se estiver vazio, usam o mesmo domínio do frontend. Em desenvolvimento, a URL de produção é ignorada e o proxy local continua funcionando. Após mudar essa variável, execute `npm run build:frontend` e publique novamente `client/dist`: o Vite incorpora o valor no build, sem carregar o `.env` em tempo de execução ([Vite](https://vite.dev/guide/env-and-mode)). Somente variáveis públicas `VITE_*` são disponibilizadas ao navegador; não coloque credenciais nelas.
 
 Quando frontend e backend tiverem domínios diferentes, configure `CORS_ORIGIN` no backend com a origem exata do frontend, por exemplo `https://app.exemplo.com`, sem barra final. Essa permissão também é validada na conexão WebSocket.
+
+Para os domínios atuais, use `CORS_ORIGIN=https://analitc.ngoezu.easypanel.host` no backend. O CORS permite GET, HEAD, POST, PUT, PATCH, DELETE e OPTIONS, com os headers Authorization e Content-Type; as rotas continuam exigindo autenticação e suas permissões. Após atualizar o código, recompile e reinicie o backend com `npm run build:backend` e o processo `npm start` mantido pelo Easypanel. Se houver um proxy com headers CORS próprios, ele deve preservar os headers enviados pelo backend.
 
 Para o serviço que usa a pasta `code`, configure os comandos separados no Easypanel:
 

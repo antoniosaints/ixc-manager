@@ -13,9 +13,10 @@ import { upgradeRoutes } from "./controllers/upgradeController.js";
 import { scheduleRetentionJobs } from "./queues/retentionQueue.js";
 import "./workers/retentionWorker.js";
 import { registerFrontend } from "./http/frontend.js";
+import { corsOptions } from "./http/cors.js";
 
 const app = Fastify({ logger: true });
-await app.register(cors, { origin: env.CORS_ORIGIN });
+await app.register(cors, corsOptions(env.CORS_ORIGIN));
 await app.register(websocket, { options: { maxPayload: 4096 } });
 await app.register(authRoutes, { prefix: "/api/auth" });
 await app.register(settingsRoutes, { prefix: "/api/settings", logLevel: "silent" });
