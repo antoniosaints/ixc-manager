@@ -251,9 +251,9 @@ function open(box: NetworkBox, status = "all") {
       </template>
     </section>
     <p class="mt-2 text-[10px] text-slate-500">
-      Indicadores respeitam a busca e o status da caixa. Online, offline e sem status contam somente logins ativos. Nenhum dado é alterado
-      no IXC. Abra uma caixa para acompanhar as conexões a cada 1 segundo. O monitor pausa quando a aba fica oculta e para ao fechar o
-      modal.
+      Indicadores respeitam a busca e o status da caixa. Online, offline e sem status contam somente logins ativos. As consultas não alteram
+      o IXC; manobras exigem revisão e permissão própria. Abra uma caixa para acompanhar as conexões a cada 1 segundo. O monitor pausa
+      quando a aba fica oculta e para ao fechar o modal.
     </p>
     <NetworkBoxDialog
       v-if="selectedBox && auth.can('network.logins.view')"

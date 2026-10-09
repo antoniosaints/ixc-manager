@@ -17,6 +17,7 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     proxy: {
+      "/api/network/port-maneuvers": { target: backendTarget, changeOrigin: true, timeout: 305_000, proxyTimeout: 300_000 },
       // Preserve the browser-facing Host for the backend's same-origin
       // WebSocket check. Rewriting it to :3000 rejects frontend origins.
       "/api/network/live": { target: backendTarget, changeOrigin: false, ws: true },

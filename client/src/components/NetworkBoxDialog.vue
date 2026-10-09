@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch, onBeforeUnmount } from "vue";
-import { Cable, MapPin, Network, Search, RefreshCw, ArrowUpRight, Info, Copy } from "lucide-vue-next";
+import { Cable, MapPin, Network, Search, RefreshCw, ArrowUpRight, Info, Copy, ArrowLeftRight } from "lucide-vue-next";
 import RecordQuickLink from "./RecordQuickLink.vue";
 import CustomerQuickLinks from "./CustomerQuickLinks.vue";
 import NetworkBoxMapDialog from "./NetworkBoxMapDialog.vue";
@@ -20,10 +20,12 @@ import LoginActions from "./LoginActions.vue";
 import LoginNetworkTabs from "./LoginNetworkTabs.vue";
 import LoginTechnologyBadge from "./LoginTechnologyBadge.vue";
 import LoginSignalCard from "./LoginSignalCard.vue";
+import PortManeuverDialog from "./PortManeuverDialog.vue";
 const props = defineProps<{ boxId: number; boxName: string; initialConnection?: string }>();
 const emit = defineEmits<{ close: [] }>();
 const auth = useAuthStore();
 const mapOpen = ref(false);
+const maneuverOpen = ref(false);
 const boxDialog = ref<InstanceType<typeof RecordDetailDialog>>();
 const loginDialog = ref<InstanceType<typeof RecordDetailDialog>>();
 const form = reactive({
@@ -51,7 +53,7 @@ watch(
 const monitor = useNetworkMonitor({
   boxIds: () => [props.boxId],
   dialogTarget: () => boxDialog.value?.target,
-  enabled: () => !selectedLogin.value,
+  enabled: () => !selectedLogin.value && !maneuverOpen.value,
   refresh: async () => {
     const updated = await refreshInBackground();
     const focused = await refreshSelected();
@@ -160,12 +162,23 @@ const statusLabel = (status: string) => (status === "online" ? "Online" : status
         :tone="data.box.active === true ? 'success' : data.box.active === false ? 'danger' : 'neutral'"
       />
       <NetworkMonitorStatus :state="monitor.state.value" :checked-at="monitor.checkedAt.value" :message="monitor.message.value" />
-      <button v-if="data?.box.coordinates" type="button" class="button-secondary ml-auto" @click="mapOpen = true">
-        <MapPin class="h-3.5 w-3.5" aria-hidden="true" />Ver no mapa
-      </button>
-      <button type="button" class="button-secondary" :disabled="loading" @click="reload">
-        <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" />Atualizar caixa
-      </button>
+      <div class="ml-auto flex flex-wrap items-center gap-2">
+        <button
+          v-if="auth.can('network.ports.manage') && auth.can('network.logins.view') && data?.box.active"
+          type="button"
+          class="button-secondary"
+          :disabled="loading"
+          @click="maneuverOpen = true"
+        >
+          <ArrowLeftRight class="h-3.5 w-3.5" aria-hidden="true" />Manobra de portas
+        </button>
+        <button v-if="data?.box.coordinates" type="button" class="button-secondary" @click="mapOpen = true">
+          <MapPin class="h-3.5 w-3.5" aria-hidden="true" />Ver no mapa
+        </button>
+        <button type="button" class="button-secondary" :disabled="loading" @click="reload">
+          <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" />Atualizar caixa
+        </button>
+      </div>
     </div>
     <LiveQueryState :loading="loading" :error="error" @retry="reload" />
     <template v-if="data && !loading && !error">
@@ -436,4 +449,11 @@ const statusLabel = (status: string) => (status === "online" ? "Online" : status
     </RecordDetailDialog>
     <NetworkBoxMapDialog v-if="mapOpen && data" :box="data.box" @close="mapOpen = false" />
   </RecordDetailDialog>
+  <PortManeuverDialog
+    v-if="maneuverOpen && auth.can('network.ports.manage') && auth.can('network.logins.view')"
+    :box-id="boxId"
+    :box-name="data?.box.name ?? boxName"
+    @close="maneuverOpen = false"
+    @completed="reload"
+  />
 </template>

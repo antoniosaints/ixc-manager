@@ -2,6 +2,7 @@ export const permissionCatalog = [
   { key: "analytics.dashboard.view", group: "Analytics", label: "Ver painel de gestão (dados conforme permissões dos módulos)" },
   { key: "network.logins.disconnect", group: "Rede", label: "Desconectar login no IXC (interrompe a sessão do cliente)" },
   { key: "network.logins.clearMac", group: "Rede", label: "Limpar MAC do login no IXC" },
+  { key: "network.ports.manage", group: "Rede", label: "Manobrar e trocar portas na mesma CTO (altera login e vínculo da ONU no IXC)" },
   { key: "network.equipment.reboot", group: "Rede", label: "Reiniciar ONU do login (interrompe o acesso)" },
   { key: "network.onus.view", group: "Rede", label: "Consultar ONUs, OLTs, perfis e pendências de autorização" },
   { key: "network.equipment.authorize", group: "Rede", label: "Autorizar e desautorizar equipamentos na OLT (altera o IXC e a rede)" },
@@ -122,6 +123,12 @@ export const accessPresets: { key: string; name: string; description: string; pe
     name: "Rede",
     description: "Caixas, lista geral de logins, dados técnicos e monitor em tempo real.",
     permissions: ["network.boxes.view", "network.logins.view", "network.logins.list", "network.onus.view"],
+  },
+  {
+    key: "NETWORK_PORTS",
+    name: "Manobra de portas",
+    description: "Caixas e dados técnicos, com permissão para mover e trocar portas na mesma CTO.",
+    permissions: ["network.boxes.view", "network.logins.view", "network.logins.list", "network.ports.manage"],
   },
   {
     key: "COMMERCIAL",

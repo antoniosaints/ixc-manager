@@ -9,10 +9,12 @@ import { LoginSignalService } from "../services/upgrades/LoginSignalService.js";
 import { env } from "../config/env.js";
 import { NetworkLoginService, loginListQuery } from "../services/network/NetworkLoginService.js";
 import { onuRoutes } from "./onuController.js";
+import { portManeuverRoutes } from "./portManeuverController.js";
 
 /** Reads remain separate from explicitly permissioned ONU operations. */
 export async function networkRoutes(app: FastifyInstance) {
   await app.register(onuRoutes, { prefix: "/onus" });
+  await app.register(portManeuverRoutes, { prefix: "/port-maneuvers" });
   if (!app.hasDecorator("websocketServer")) await app.register(websocket, { options: { maxPayload: 4096 } });
   const auth = new AuthService(),
     db = new IxcReadDatabase(),

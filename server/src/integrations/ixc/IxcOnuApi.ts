@@ -55,7 +55,13 @@ export class IxcOnuApi {
     return data.rows as OnuRow[];
   }
   async record(
-    table: "radpop_radio_cliente_fibra" | "radusuarios" | "cliente_contrato" | "radpop_radio" | "radpop_radio_cliente_fibra_perfil",
+    table:
+      | "radpop_radio_cliente_fibra"
+      | "radusuarios"
+      | "cliente_contrato"
+      | "radpop_radio"
+      | "radpop_radio_cliente_fibra_perfil"
+      | "rad_caixa_ftth",
     id: number
   ) {
     const result = await this.reader.listPage<OnuRow>(
@@ -85,6 +91,9 @@ export class IxcOnuApi {
   }
   update(id: number, fields: OnuRow) {
     return this.command("put", `/radpop_radio_cliente_fibra/${id}`, fields);
+  }
+  updateLogin(id: number, fields: OnuRow) {
+    return this.command("put", `/radusuarios/${id}`, fields);
   }
   provision(id: number) {
     return this.command("post", "/botao_gravar_dispositivo_22408", { id: String(id) });

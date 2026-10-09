@@ -197,6 +197,7 @@ describe("Lista geral de logins", () => {
       "MANAGER",
       "SUPPORT",
       "NETWORK",
+      "NETWORK_PORTS",
       "COMMERCIAL",
       "FINANCE",
       "COLLECTIONS",
