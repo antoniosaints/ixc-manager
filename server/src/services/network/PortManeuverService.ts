@@ -8,7 +8,10 @@ import { compatibleOnu } from "../upgrades/LoginOnuLink.js";
 import { OnuOperationStore, type OperationStore, type OnuOperation } from "./OnuOperationStore.js";
 
 const id = z.coerce.number().int().positive().safe();
-export const portManeuverInput = z.object({ loginId: id, targetPort: id.max(512), swapLoginId: id.optional() }).strict();
+export const portManeuverInput = z
+  .object({ loginId: id, targetPort: id.max(512), swapLoginId: id.optional(), loginOnly: z.boolean().optional() })
+  .strict()
+  .refine((value) => !value.loginOnly || !value.swapLoginId, "A edição individual não troca dois logins.");
 type Input = z.infer<typeof portManeuverInput>;
 type Row = Record<string, unknown>;
 type PortRecord = { kind: "login" | "onu"; id: number; loginId: number; boxId: number; port: number; identity: string };
@@ -32,6 +35,8 @@ type Plan = {
   target: PortRecord[];
   original: PortRecord[];
   logins: ReviewLogin[];
+  temporaryPort?: number | null;
+  loginOnly?: boolean;
 };
 const text = (value: unknown) => String(value ?? "").trim();
 const num = (value: unknown) => Number(value ?? 0);
@@ -142,7 +147,7 @@ export class PortManeuverService {
       throw fail("A CTO possui vínculos demais para uma manobra segura. Revise o cadastro no IXC.", 422);
     return { box, capacity, logins, onus, reservations };
   }
-  private reason(topology: Awaited<ReturnType<PortManeuverService["read"]>>, login: Row) {
+  private reason(topology: Awaited<ReturnType<PortManeuverService["read"]>>, login: Row, loginOnly = false) {
     const linked = topology.onus.filter((onu) => num(onu.id_login) === num(login.id));
     if (
       !id.safeParse(login.id_cliente).success ||
@@ -159,22 +164,25 @@ export class PortManeuverService {
       onu &&
       (!compatibleOnu({ ...onu, login_onu_mac: login.onu_mac }, num(login.id_contrato), num(login.id_cliente)) ||
         num(onu.id_caixa_ftth) !== num(topology.box.id) ||
-        num(onu.porta_ftth) !== num(login.ftth_porta) ||
+        (!loginOnly && num(onu.porta_ftth) !== num(login.ftth_porta)) ||
         num(onu.id_transmissor) !== num(topology.box.id_transmissor))
     )
       return "Login e ONU têm vínculos ou portas divergentes. Corrija no IXC antes da manobra.";
-    if (!id.safeParse(login.ftth_porta).success || num(login.ftth_porta) > topology.capacity)
+    if (
+      !(loginOnly ? z.coerce.number().int().min(0).safe() : id).safeParse(login.ftth_porta).success ||
+      num(login.ftth_porta) > topology.capacity
+    )
       return "Porta atual fora da capacidade da CTO.";
     return null;
   }
-  private dto(t: Awaited<ReturnType<PortManeuverService["read"]>>) {
+  private dto(t: Awaited<ReturnType<PortManeuverService["read"]>>, onlyLoginId?: number) {
     const logins = t.logins.map((r) => ({
       id: num(r.id),
       login: text(r.login),
       customerName: text(r.customerName),
       port: num(r.ftth_porta),
       active: text(r.ativo) === "S",
-      blockedReason: this.reason(t, r),
+      blockedReason: this.reason(t, r, onlyLoginId === num(r.id)),
       onuId: num(t.onus.find((f) => num(f.id_login) === num(r.id))?.id) || null,
       onuPort: num(t.onus.find((f) => num(f.id_login) === num(r.id))?.porta_ftth) || null,
     }));
@@ -188,7 +196,7 @@ export class PortManeuverService {
         ? "Reserva de rede neutra."
         : assigned.length > 1
           ? "Mais de um login na porta."
-          : fiber.some((f) => !login || num(f.id_login) !== login.id)
+          : fiber.some((f) => num(f.id_login) !== onlyLoginId && (!login || num(f.id_login) !== login.id))
             ? "ONU sem vínculo único com o login desta porta."
             : login?.blockedReason;
       return {
@@ -209,8 +217,26 @@ export class PortManeuverService {
       queriedAt: new Date().toISOString(),
     };
   }
-  async options(boxId: number) {
-    return this.db.withSnapshot(async (s) => this.dto(await this.read(s, id.parse(boxId))));
+  async options(boxId: number, onlyLoginId?: number) {
+    return this.db.withSnapshot(async (s) => {
+      const topology = await this.read(s, id.parse(boxId));
+      if (onlyLoginId && !topology.logins.some((row) => num(row.id) === onlyLoginId)) throw fail("Login não encontrado nesta CTO.", 404);
+      return this.dto(topology, onlyLoginId);
+    });
+  }
+  async loginContext(loginId: number) {
+    const [login] = await this.db.withSnapshot((s) =>
+      s.select<Row>({
+        name: "port-login-context",
+        sql: "SELECT id,id_caixa_ftth FROM radusuarios WHERE id=?",
+        params: [id.parse(loginId)],
+        timeoutSeconds: 5,
+      })
+    );
+    if (!login || !id.safeParse(login.id_caixa_ftth).success)
+      throw fail("O login não possui uma CTO cadastrada. Confira o vínculo no IXC.", 422);
+    const options = await this.options(num(login.id_caixa_ftth), loginId);
+    return { boxId: options.boxId, boxName: options.boxName };
   }
   private keys(plan: Plan) {
     return [`box:${plan.boxId}`, `olt:${plan.oltId}`, ...plan.logins.map((r) => `login:${r.id}`)];
@@ -235,9 +261,10 @@ export class PortManeuverService {
   private async collision(plan: Plan) {
     const t = await this.db.withSnapshot((s) => this.read(s, plan.boxId));
     if (t.capacity !== plan.capacity || num(t.box.id_transmissor) !== plan.oltId) throw fail("A CTO mudou desde a revisão.");
-    const wanted = new Set(plan.target.filter((r) => r.boxId === plan.boxId && r.port > 0).map((r) => r.port));
+    const wanted = new Set([...plan.target, ...plan.original].filter((r) => r.boxId === plan.boxId && r.port > 0).map((r) => r.port));
+    if (plan.temporaryPort) wanted.add(plan.temporaryPort);
     const loginIds = new Set(plan.logins.map((r) => r.id)),
-      onuIds = new Set(plan.before.filter((r) => r.kind === "onu").map((r) => r.id));
+      onuIds = new Set(plan.logins.flatMap((r) => (r.onuId ? [r.onuId] : [])));
     if (
       t.logins.some((r) => !loginIds.has(num(r.id)) && wanted.has(num(r.ftth_porta))) ||
       t.onus.some((r) => num(r.id_caixa_ftth) === plan.boxId && !onuIds.has(num(r.id)) && wanted.has(num(r.porta_ftth))) ||
@@ -269,17 +296,29 @@ export class PortManeuverService {
     }
   }
   private response(token: string, plan: Plan) {
-    return { token, review: { mode: plan.mode, boxId: plan.boxId, boxName: plan.boxName, logins: plan.logins }, expiresInSeconds: 300 };
+    return {
+      token,
+      review: {
+        mode: plan.mode,
+        boxId: plan.boxId,
+        boxName: plan.boxName,
+        logins: plan.logins,
+        loginOnly: !!plan.loginOnly,
+        temporaryPort: plan.temporaryPort ?? null,
+      },
+      expiresInSeconds: 300,
+    };
   }
   async prepare(userId: number, boxId: number, input: Input) {
     portManeuverInput.parse(input);
     const t = await this.db.withSnapshot((s) => this.read(s, id.parse(boxId))),
-      options = this.dto(t);
+      options = this.dto(t, input.loginOnly ? input.loginId : undefined);
     const source = options.logins.find((r) => r.id === input.loginId),
       target = options.ports.find((p) => p.port === input.targetPort);
     if (!source || source.blockedReason) throw fail(source?.blockedReason ?? "Login não encontrado nesta CTO.");
     if (!target || target.port === source.port) throw fail("Selecione outra porta dentro da capacidade da CTO.");
     if (target.status === "blocked") throw fail(target.reason ?? "A porta está bloqueada para manobra.");
+    if (input.loginOnly && target.status !== "free") throw fail("Escolha uma porta livre para editar somente este login.");
     if ((target.status === "occupied" && input.swapLoginId !== target.loginId) || (target.status === "free" && input.swapLoginId))
       throw fail("A ocupação da porta mudou. Atualize e confirme a troca novamente.");
     const selected = [source, ...(input.swapLoginId ? [options.logins.find((r) => r.id === input.swapLoginId)!] : [])];
@@ -310,7 +349,7 @@ export class PortManeuverService {
       const loginRecord = record("login", row);
       await this.apiRecord(loginRecord);
       before.push(loginRecord);
-      if (r.onuId) {
+      if (r.onuId && !input.loginOnly) {
         const onu = await this.api.record("radpop_radio_cliente_fibra", r.onuId);
         const baseline = t.onus.find((f) => num(f.id) === r.onuId)!;
         if (
@@ -339,7 +378,11 @@ export class PortManeuverService {
       target: before.map((r) => ({ ...r, port: logins.find((l) => l.id === r.loginId)!.toPort })),
       original: before,
       logins,
+      loginOnly: !!input.loginOnly,
+      temporaryPort: logins.length === 2 ? (options.ports.find((p) => p.status === "free")?.port ?? null) : null,
     };
+    if (plan.mode === "swap" && !plan.temporaryPort)
+      throw fail("A troca exige uma porta livre temporária na mesma CTO. Nenhuma gravação foi enviada.");
     await this.box(plan);
     await this.collision(plan);
     return this.response(await this.store.prepare({ userId, state: "prepared", plan }), plan);
@@ -379,7 +422,12 @@ export class PortManeuverService {
     if (busy) throw fail(`A operação ainda está reservada. Aguarde ${busy.retryAfterSeconds ?? 180} segundos e consulte novamente.`);
     await this.box(plan);
     const before: PortRecord[] = [];
-    const allowed = new Set([0, ...plan.original.map((r) => r.port), ...plan.target.map((r) => r.port)]);
+    const allowed = new Set([
+      0,
+      ...(plan.temporaryPort ? [plan.temporaryPort] : []),
+      ...plan.original.map((r) => r.port),
+      ...plan.target.map((r) => r.port),
+    ]);
     for (const r of plan.original) {
       const current = record(r.kind, await this.apiRecord(r));
       if (current.boxId !== plan.boxId || !allowed.has(current.port))
@@ -391,14 +439,46 @@ export class PortManeuverService {
       mode: "restore",
       before,
       target: plan.original,
+      temporaryPort: null,
       logins: plan.logins.map((r) => ({
         ...r,
         fromPort: before.find((b) => b.kind === "login" && b.id === r.id)!.port,
         toPort: plan.original.find((b) => b.kind === "login" && b.id === r.id)!.port,
       })),
     };
+    const options = await this.options(boxId);
+    recovery.temporaryPort = options.ports.find((p) => p.status === "free" && !plan.original.some((r) => r.port === p.port))?.port ?? null;
+    if (!this.schedule(recovery).some((movement) => movement.label === "move-to-temporary-port")) recovery.temporaryPort = null;
     await this.collision(recovery);
     return this.response(await this.store.prepare({ userId, state: "prepared", plan: recovery }), recovery);
+  }
+  private schedule(plan: Plan) {
+    const current = plan.before.map((r) => ({ ...r }));
+    const moves: { loginId: number; targets: PortRecord[]; label: string }[] = [];
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const pending = plan.logins.filter((l) =>
+        plan.target.some((t) => t.loginId === l.id && current.find((r) => recordKey(r) === recordKey(t))?.port !== t.port)
+      );
+      if (!pending.length) return moves;
+      const next = pending.find((l) =>
+        plan.target
+          .filter((r) => r.loginId === l.id)
+          .every((target) => !current.some((r) => r.loginId !== l.id && r.port > 0 && r.port === target.port))
+      );
+      const login = next ?? pending[0]!;
+      if (!next && (!plan.temporaryPort || current.some((r) => r.port === plan.temporaryPort)))
+        throw fail("A troca ou restauração precisa de uma porta livre temporária. Nenhuma próxima gravação será enviada.");
+      const targets = plan.target.filter((r) => r.loginId === login.id).map((r) => ({ ...r, port: next ? r.port : plan.temporaryPort! }));
+      if (targets.some((r) => r.kind === "onu" && r.port <= 0))
+        throw fail("A ONU precisa de uma porta válida; a operação não usará porta 0.");
+      moves.push({
+        loginId: login.id,
+        targets,
+        label: next ? (plan.mode === "restore" ? "restore-original-port" : "move-to-destination") : "move-to-temporary-port",
+      });
+      for (const target of targets) current.find((r) => recordKey(r) === recordKey(target))!.port = target.port;
+    }
+    throw fail("Não foi possível ordenar a manobra com segurança.");
   }
   async execute(userId: number, token: string, boxId: number, checkAccess: () => Promise<void>) {
     await checkAccess();
@@ -461,23 +541,7 @@ export class PortManeuverService {
           await checkpoint();
         }
       };
-      if (plan.mode === "restore") {
-        for (const login of plan.logins)
-          await move(
-            login.id,
-            plan.before.map((r) => ({ ...r, port: 0 })),
-            "release-for-recovery"
-          );
-        for (const login of plan.logins) await move(login.id, plan.target, "restore-original-port");
-      } else if (plan.mode === "swap") {
-        await move(
-          plan.logins[0]!.id,
-          plan.before.map((r) => ({ ...r, port: 0 })),
-          "release-source"
-        );
-        await move(plan.logins[1]!.id, plan.target, "move-other-login");
-        await move(plan.logins[0]!.id, plan.target, "move-source-login");
-      } else await move(plan.logins[0]!.id, plan.target, "move-to-free-port");
+      for (const movement of this.schedule(plan)) await move(movement.loginId, movement.targets, movement.label);
       await validateAll();
       await this.collision(plan);
       result = {
@@ -485,7 +549,9 @@ export class PortManeuverService {
         message:
           plan.mode === "restore"
             ? "Portas originais restauradas e conferidas no IXC."
-            : "Manobra concluída. As portas dos logins e ONUs vinculadas foram conferidas no IXC.",
+            : plan.loginOnly
+              ? "Porta do login atualizada e conferida no IXC. O cadastro da ONU não foi alterado."
+              : "Manobra concluída. As portas dos logins e ONUs vinculadas foram conferidas no IXC.",
         onuId: null,
         step: "complete",
       };
@@ -496,7 +562,7 @@ export class PortManeuverService {
         message: uncertain
           ? "O IXC não confirmou a última gravação. A manobra foi interrompida; consulte o resultado e revise a restauração antes de repetir."
           : changed
-            ? "A manobra foi interrompida após uma gravação. Consulte as portas atuais e use Restaurar portas originais para revisar a recuperação."
+            ? `A manobra foi interrompida na etapa ${step === "move-to-temporary-port" ? "de porta temporária" : "de gravação do destino"}. Consulte as portas atuais e use Restaurar portas originais para revisar a recuperação.`
             : (error as { statusCode?: number }).statusCode
               ? (error as Error).message
               : error instanceof OnuCommandError

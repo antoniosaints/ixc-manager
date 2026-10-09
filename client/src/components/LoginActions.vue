@@ -5,8 +5,9 @@ import { loginToolsApi, type LoginToolScope, type LoginAction, type LoginActionP
 import { useAuthStore } from "../stores/auth";
 import { toast } from "../notifications/toast";
 import RecordDetailDialog from "./RecordDetailDialog.vue";
+import LoginPortAction from "./LoginPortAction.vue";
 const props = defineProps<{ loginId: number; login: string | null; scope: LoginToolScope }>();
-const emit = defineEmits<{ completed: [] }>();
+const emit = defineEmits<{ completed: [port?: number] }>();
 const auth = useAuthStore(),
   preparing = ref(false),
   busy = ref(false),
@@ -89,7 +90,8 @@ function close() {
 }
 </script>
 <template>
-  <div v-if="actions.some((a) => auth.can(a.permission))" class="flex flex-wrap items-center justify-end gap-2">
+  <div class="flex flex-wrap items-center justify-end gap-2">
+    <LoginPortAction :login-id="loginId" :disabled="preparing || busy" @completed="(port) => emit('completed', port)" />
     <button
       v-for="action in actions.filter((a) => auth.can(a.permission))"
       :key="action.id"

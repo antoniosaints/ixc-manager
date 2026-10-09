@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import {
   Network,
   KeyRound,
@@ -35,7 +35,21 @@ const props = withDefaults(
 );
 const auth = useAuthStore();
 const liveConnection = ref<ConnectionUpdate | null>(null);
-const login = computed(() => (liveConnection.value ? applyConnectionUpdate(props.login, liveConnection.value) : props.login));
+const changedPort = ref<number | null>(null);
+watch(
+  () => props.login.id,
+  () => {
+    changedPort.value = null;
+    liveConnection.value = null;
+  }
+);
+const login = computed(() => ({
+  ...(liveConnection.value ? applyConnectionUpdate(props.login, liveConnection.value) : props.login),
+  ...(changedPort.value !== null ? { ftthPort: String(changedPort.value), ftthBoxSource: "login" as const } : {}),
+}));
+function actionCompleted(port?: number) {
+  if (port !== undefined) changedPort.value = port;
+}
 const monitor = useNetworkMonitor({
   scope: () =>
     props.module === "support" && props.login.id && props.login.customerId && auth.can("support.customer.view")
@@ -172,7 +186,7 @@ function keyboard(e: KeyboardEvent) {
           </button>
         </div>
       </div>
-      <div class="ml-auto"><LoginActions :login-id="login.id" :login="login.login" :scope="toolScope" /></div>
+      <div class="ml-auto"><LoginActions :login-id="login.id" :login="login.login" :scope="toolScope" @completed="actionCompleted" /></div>
     </div>
     <div :id="`login-panel-${module}-${login.id}`" role="tabpanel" :aria-labelledby="`login-${module}-${login.id}-${tab}`" tabindex="0">
       <p class="mb-3 text-[11px] text-slate-500">{{ tabs.find((item) => item.id === tab)?.help }}</p>

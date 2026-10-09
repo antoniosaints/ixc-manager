@@ -22,6 +22,8 @@ export interface ManeuverPlan {
     mode: "move" | "swap" | "restore";
     boxId: number;
     boxName: string;
+    loginOnly?: boolean;
+    temporaryPort?: number | null;
     logins: { id: number; login: string; customerId: number; contractId: number; fromPort: number; toPort: number; onuId: number | null }[];
   };
   expiresInSeconds: number;
@@ -30,9 +32,9 @@ export interface ManeuverResult {
   state: "prepared" | "processing" | "success" | "rejected" | "partial" | "unknown";
   result: { message: string; step: string; state: string } | null;
 }
-async function request<T>(boxId: number, path = "", body?: unknown): Promise<T> {
+async function requestPath<T>(path: string, body?: unknown): Promise<T> {
   const token = localStorage.getItem("retencao-cas.auth-token");
-  const response = await apiFetch(`/api/network/port-maneuvers/boxes/${boxId}${path}`, {
+  const response = await apiFetch(`/api/network/port-maneuvers${path}`, {
     method: body ? "POST" : "GET",
     cache: "no-store",
     headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
@@ -43,9 +45,11 @@ async function request<T>(boxId: number, path = "", body?: unknown): Promise<T> 
     throw new Error(result?.message ?? "Não foi possível consultar a manobra. Consulte o resultado antes de repetir.");
   return result;
 }
+const request = <T>(boxId: number, path = "", body?: unknown) => requestPath<T>(`/boxes/${boxId}${path}`, body);
 export const portManeuverApi = {
-  options: (boxId: number) => request<ManeuverOptions>(boxId),
-  prepare: (boxId: number, input: { loginId: number; targetPort: number; swapLoginId?: number }) =>
+  loginContext: (loginId: number) => requestPath<{ boxId: number; boxName: string }>(`/logins/${loginId}`),
+  options: (boxId: number, loginId?: number) => request<ManeuverOptions>(boxId, loginId ? `/login-ports/${loginId}` : ""),
+  prepare: (boxId: number, input: { loginId: number; targetPort: number; swapLoginId?: number; loginOnly?: boolean }) =>
     request<ManeuverPlan>(boxId, "/plans", input),
   execute: (boxId: number, token: string) => request<ManeuverResult>(boxId, `/operations/${token}/execute`, { confirmed: true }),
   status: (boxId: number, token: string) => request<ManeuverPlan & ManeuverResult>(boxId, `/operations/${token}`),

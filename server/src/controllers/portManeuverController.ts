@@ -29,6 +29,15 @@ export async function portManeuverRoutes(app: FastifyInstance) {
     });
   });
   const access = (request: FastifyRequest) => auth.requirePermission(request, ...permissions);
+  app.get("/logins/:loginId", { logLevel: "silent" }, async (request) => {
+    await access(request);
+    return service.loginContext(z.object({ loginId: z.coerce.number().int().positive().safe() }).parse(request.params).loginId);
+  });
+  app.get("/boxes/:boxId/login-ports/:loginId", { logLevel: "silent" }, async (request) => {
+    await access(request);
+    const { boxId, loginId } = boxParams.extend({ loginId: z.coerce.number().int().positive().safe() }).parse(request.params);
+    return service.options(boxId, loginId);
+  });
   app.get("/boxes/:boxId", { logLevel: "silent" }, async (request) => {
     await access(request);
     return service.options(boxParams.parse(request.params).boxId);

@@ -9,8 +9,8 @@ import { clearManeuverBackup, readManeuverBackup, saveManeuverBackup, type Maneu
 import { useAuthStore } from "../stores/auth";
 import { toast } from "../notifications/toast";
 import { queryErrorMessage } from "../queryErrorMessage";
-const props = defineProps<{ boxId: number; boxName: string }>();
-const emit = defineEmits<{ close: []; completed: [] }>();
+const props = defineProps<{ boxId: number; boxName: string; initialLoginId?: number; loginOnly?: boolean }>();
+const emit = defineEmits<{ close: []; completed: [ports: { id: number; port: number }[]] }>();
 const auth = useAuthStore(),
   userId = auth.user?.id ?? 0;
 const options = ref<ManeuverOptions | null>(null),
@@ -18,7 +18,7 @@ const options = ref<ManeuverOptions | null>(null),
   busy = ref(false),
   executing = ref(false),
   error = ref("");
-const loginId = ref<number | string>(""),
+const loginId = ref<number | string>(props.initialLoginId ?? ""),
   targetPort = ref<number | string>("");
 const plan = ref<ManeuverPlan | null>(null),
   result = ref<ManeuverResult | null>(null),
@@ -34,7 +34,7 @@ const target = computed(() => options.value?.ports.find((r) => r.port === Number
 const loginOptions = computed(() =>
   (options.value?.logins ?? []).map((r) => ({
     value: r.id,
-    label: `Porta ${r.port || "—"} · ${r.login} · #${r.id}`,
+    label: `${r.port ? `Porta ${r.port}` : "Sem porta"} · ${r.login} · #${r.id}`,
     description: r.blockedReason ?? `${r.customerName} · ${r.active ? "Ativo" : "Inativo"}${r.onuId ? ` · ONU #${r.onuId}` : ""}`,
     disabled: !!r.blockedReason,
   }))
@@ -43,8 +43,14 @@ const portOptions = computed(() =>
   (options.value?.ports ?? []).map((p) => ({
     value: p.port,
     label: `Porta ${p.port} · ${p.status === "free" ? "Livre" : p.status === "blocked" ? "Bloqueada" : p.login}`,
-    description: p.reason ?? (p.status === "occupied" ? "Trocar as portas dos dois logins" : "Mover o login para esta porta"),
-    disabled: p.status === "blocked" || p.port === source.value?.port,
+    description:
+      p.reason ??
+      (p.status === "occupied"
+        ? props.loginOnly
+          ? "Porta ocupada por outro login"
+          : "Trocar as portas dos dois logins"
+        : "Mover o login para esta porta"),
+    disabled: p.status === "blocked" || (props.loginOnly && p.status === "occupied") || p.port === source.value?.port,
   }))
 );
 const pending = computed(() => !!backup.value && (requested.value || !plan.value));
@@ -60,14 +66,16 @@ const finished = computed(
 const operationLabel = computed(() =>
   plan.value?.review.mode === "restore"
     ? "Restaurar portas originais"
-    : plan.value?.review.mode === "swap"
-      ? "Trocar portas"
-      : "Mover login"
+    : plan.value?.review.loginOnly
+      ? "Mudar porta do login"
+      : plan.value?.review.mode === "swap"
+        ? "Trocar portas"
+        : "Mover login"
 );
 async function loadOptions() {
   loading.value = true;
   try {
-    options.value = await portManeuverApi.options(props.boxId);
+    options.value = await portManeuverApi.options(props.boxId, props.loginOnly ? props.initialLoginId : undefined);
   } catch (e) {
     error.value = queryErrorMessage(e instanceof Error ? e.message : "Falha ao consultar portas.");
   } finally {
@@ -93,6 +101,7 @@ async function prepare() {
     const prepared = await portManeuverApi.prepare(props.boxId, {
       loginId: source.value.id,
       targetPort: target.value.port,
+      ...(props.loginOnly ? { loginOnly: true } : {}),
       ...(target.value.status === "occupied" && target.value.loginId ? { swapLoginId: target.value.loginId } : {}),
     });
     plan.value = prepared;
@@ -124,7 +133,7 @@ function applyResult(next: ManeuverResult) {
   }
   if (next.state === "success") {
     toast.success(next.result?.message ?? "Manobra concluída");
-    emit("completed");
+    emit("completed", plan.value?.review.logins.map((r) => ({ id: r.id, port: r.toPort })) ?? []);
   }
 }
 async function execute() {
@@ -247,14 +256,18 @@ onMounted(async () => {
 </script>
 <template>
   <RecordDetailDialog
-    :title="'Manobra de portas'"
+    :title="loginOnly ? 'Mudar porta do login' : 'Manobra de portas'"
     :subtitle="`${boxName} · CTO #${boxId}`"
     :icon="ArrowLeftRight"
     module="network"
     :close-on-backdrop="false"
     @close="close"
   >
-    <p class="mb-4 text-xs leading-5 text-slate-500">
+    <p v-if="loginOnly" class="mb-4 text-xs leading-5 text-slate-500">
+      Edite apenas a porta cadastrada neste login, na mesma CTO. O cadastro da ONU não será alterado. Uma porta vinculada somente à ONU
+      deste login pode ser selecionada para corrigir um cadastro sem porta ou divergente.
+    </p>
+    <p v-else class="mb-4 text-xs leading-5 text-slate-500">
       Mova um login para uma porta livre ou troque dois logins desta CTO. Login e ONU vinculada são conferidos juntos. A manobra altera o
       cadastro no IXC; a mudança física deve acompanhar as portas revisadas.
     </p>
@@ -268,7 +281,7 @@ onMounted(async () => {
     <p v-if="error" class="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-700" role="alert">{{ error }}</p>
     <template v-if="!requested && !plan">
       <div class="mb-4 flex items-center justify-between gap-2">
-        <h3 class="text-sm font-bold">Escolha o login e a porta de destino</h3>
+        <h3 class="text-sm font-bold">{{ loginOnly ? "Porta atual e destino" : "Escolha o login e a porta de destino" }}</h3>
         <button
           type="button"
           class="button-secondary"
@@ -287,7 +300,7 @@ onMounted(async () => {
           :options="loginOptions"
           label="Login de origem"
           :loading="loading"
-          :disabled="busy || pending || !allowed"
+          :disabled="busy || pending || !allowed || !!initialLoginId"
           @update:model-value="selectSource"
         />
         <SearchableSelect
@@ -311,7 +324,15 @@ onMounted(async () => {
             v-for="p in options.ports"
             :key="p.port"
             type="button"
-            :disabled="busy || pending || !source || !allowed || p.status === 'blocked' || p.port === source.port"
+            :disabled="
+              busy ||
+              pending ||
+              !source ||
+              !allowed ||
+              p.status === 'blocked' ||
+              (loginOnly && p.status === 'occupied') ||
+              p.port === source.port
+            "
             :title="`Porta ${p.port}: ${p.reason ?? p.login ?? 'Livre'}`"
             :aria-label="`Porta ${p.port}: ${p.status === 'free' ? 'livre' : (p.login ?? 'bloqueada')}`"
             :aria-pressed="Number(targetPort) === p.port"
@@ -327,7 +348,17 @@ onMounted(async () => {
             @click="selectTarget(p.port)"
           >
             <strong class="block text-sm">{{ p.port }}</strong
-            >{{ p.port === source?.port ? "Origem" : p.status === "free" ? "Livre" : p.status === "occupied" ? "Trocar" : "Revisar" }}
+            >{{
+              p.port === source?.port
+                ? "Origem"
+                : p.status === "free"
+                  ? "Livre"
+                  : p.status === "occupied"
+                    ? loginOnly
+                      ? "Ocupada"
+                      : "Trocar"
+                    : "Revisar"
+            }}
           </button>
         </div>
         <p class="mt-2 text-[11px] leading-4 text-slate-500">
@@ -336,7 +367,9 @@ onMounted(async () => {
       </div>
       <div v-if="source && target" class="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
         <strong>{{ target.status === "occupied" ? "Troca de portas" : "Mudança para porta livre" }}</strong>
-        <p class="mt-1 break-words">{{ source.login }}: porta {{ source.port }} → {{ target.port }}</p>
+        <p class="mt-1 break-words">
+          {{ source.login }}: {{ source.port ? `porta ${source.port}` : "sem porta" }} → porta {{ target.port }}
+        </p>
         <p v-if="target.status === 'occupied'" class="mt-1 break-words">{{ target.login }}: porta {{ target.port }} → {{ source.port }}</p>
       </div>
       <div class="mt-4 flex justify-end gap-2">
@@ -347,13 +380,19 @@ onMounted(async () => {
           :disabled="busy || loading || pending || !source || !target || !allowed"
           @click="prepare"
         >
-          <ShieldCheck class="h-4 w-4" aria-hidden="true" />{{ busy ? "Validando…" : "Revisar manobra" }}
+          <ShieldCheck class="h-4 w-4" aria-hidden="true" />{{ busy ? "Validando…" : loginOnly ? "Revisar alteração" : "Revisar manobra" }}
         </button>
       </div>
     </template>
     <template v-if="plan">
       <div class="rounded-xl border border-slate-200 p-4" :aria-busy="executing">
         <h3 class="mb-3 text-sm font-bold">{{ operationLabel }} · {{ plan.review.boxName }}</h3>
+        <p v-if="plan.review.loginOnly" class="mb-3 text-xs text-slate-500">
+          Somente a porta do login será gravada; a ONU permanece com seu cadastro atual.
+        </p>
+        <p v-if="plan.review.temporaryPort" class="mb-3 text-xs text-slate-500">
+          Porta livre temporária {{ plan.review.temporaryPort }} selecionada para ordenar a troca, sem utilizar porta 0.
+        </p>
         <PortManeuverProgress
           v-if="executing && plan.review.logins[0]"
           :from-port="plan.review.logins[0].fromPort"
@@ -397,8 +436,8 @@ onMounted(async () => {
         </div>
       </div>
       <p v-if="plan.review.mode === 'swap' && !requested" class="mt-3 text-xs leading-5 text-slate-500">
-        A origem ficará temporariamente sem porta, o segundo login ocupará a porta liberada e o primeiro será salvo no destino. Cada etapa é
-        conferida no IXC.
+        A origem usará uma porta livre temporária, o segundo login ocupará a porta liberada e o primeiro será salvo no destino. Cada etapa é
+        conferida no IXC. A troca exige uma porta livre na CTO.
       </p>
       <div
         v-if="result && requested"

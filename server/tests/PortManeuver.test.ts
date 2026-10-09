@@ -83,6 +83,13 @@ function fixture() {
       return { type: "success" };
     }),
     update: vi.fn(async (id: number, payload: Record<string, unknown>) => {
+      if (
+        Number(payload.porta_ftth) <= 0 ||
+        sql
+          .prepare("SELECT id FROM radpop_radio_cliente_fibra WHERE id<>? AND id_caixa_ftth=? AND porta_ftth=?")
+          .get(id, Number(payload.id_caixa_ftth), Number(payload.porta_ftth))
+      )
+        throw new OnuCommandError(false);
       sql
         .prepare("UPDATE radpop_radio_cliente_fibra SET id_caixa_ftth=?,porta_ftth=? WHERE id=?")
         .run(Number(payload.id_caixa_ftth), Number(payload.porta_ftth), id);
@@ -126,18 +133,19 @@ describe("Manobra de portas na mesma CTO", () => {
       sql.close();
     }
   });
-  it("troca duas portas sem excluir registros, liberando a origem antes da troca", async () => {
+  it("troca duas portas com uma porta livre temporária e nunca usa porta zero na ONU", async () => {
     const { sql, service, api, ports } = fixture();
     try {
       const prepared = await service.prepare(2, 20, { loginId: 60, targetPort: 2, swapLoginId: 61 });
+      expect(prepared.review.temporaryPort).toBe(3);
       expect((await service.execute(2, prepared.token, 20, access)).state).toBe("success");
       expect(api.updateLogin.mock.calls.map(([id, p]) => [id, p.ftth_porta])).toEqual([
-        [60, "0"],
+        [60, "3"],
         [61, "1"],
         [60, "2"],
       ]);
       expect(api.update.mock.calls.map(([id, p]) => [id, p.porta_ftth])).toEqual([
-        [90, "0"],
+        [90, "3"],
         [91, "1"],
         [90, "2"],
       ]);
@@ -245,6 +253,79 @@ describe("Manobra de portas na mesma CTO", () => {
       sql.close();
     }
   });
+  it("recusa troca sem uma porta temporária livre e revalida sua reserva antes da gravação", async () => {
+    const { sql, service, api } = fixture();
+    try {
+      sql.exec("UPDATE rad_caixa_ftth SET capacidade=2 WHERE id=20");
+      await expect(service.prepare(2, 20, { loginId: 60, targetPort: 2, swapLoginId: 61 })).rejects.toThrow("porta livre temporária");
+      expect(api.updateLogin).not.toHaveBeenCalled();
+      sql.exec("UPDATE rad_caixa_ftth SET capacidade=8 WHERE id=20");
+      const plan = await service.prepare(2, 20, { loginId: 60, targetPort: 2, swapLoginId: 61 });
+      sql.exec("INSERT INTO reserva_rede_neutra VALUES(1,'20',3,NULL)");
+      expect((await service.execute(2, plan.token, 20, access)).state).toBe("rejected");
+      expect(api.updateLogin).not.toHaveBeenCalled();
+      expect(api.update).not.toHaveBeenCalled();
+    } finally {
+      sql.close();
+    }
+  });
+  it("restaura o caso antigo: login sem porta e ONU ainda na origem, sem enviar porta 0", async () => {
+    const { sql, service, api, store, ports } = fixture();
+    try {
+      const old = await service.prepare(2, 20, { loginId: 60, targetPort: 2, swapLoginId: 61 });
+      const operation = store.operations.get(old.token)!;
+      operation.state = "partial";
+      delete operation.plan.temporaryPort;
+      sql.exec("UPDATE radusuarios SET ftth_porta=0 WHERE id=60");
+      const recovery = await service.prepareRecovery(2, old.token, 20);
+      expect((await service.execute(2, recovery.token, 20, access)).state).toBe("success");
+      expect(ports()).toEqual([1, 2, 1, 2]);
+      expect(api.updateLogin.mock.calls.map(([id, p]) => [id, p.ftth_porta])).toEqual([[60, "1"]]);
+      expect(api.update).not.toHaveBeenCalled();
+    } finally {
+      sql.close();
+    }
+  });
+  it("edita somente a porta do login e permite corrigir porta zero para a própria ONU", async () => {
+    const { sql, service, api, ports } = fixture();
+    try {
+      sql.exec("UPDATE radusuarios SET ftth_porta=0 WHERE id=60");
+      expect((await service.options(20)).logins.find((l) => l.id === 60)?.blockedReason).toContain("divergentes");
+      const options = await service.options(20, 60);
+      expect(options.logins.find((l) => l.id === 60)?.blockedReason).toBeNull();
+      expect(options.ports.find((p) => p.port === 1)?.status).toBe("free");
+      expect(await service.loginContext(60)).toEqual({ boxId: 20, boxName: "CTO A" });
+      const plan = await service.prepare(2, 20, { loginId: 60, targetPort: 1, loginOnly: true });
+      expect(plan.review.loginOnly).toBe(true);
+      expect((await service.execute(2, plan.token, 20, access)).state).toBe("success");
+      expect(ports()).toEqual([1, 2, 1, 2]);
+      expect(api.update).not.toHaveBeenCalled();
+      const move = await service.prepare(2, 20, { loginId: 60, targetPort: 3, loginOnly: true });
+      expect((await service.execute(2, move.token, 20, access)).state).toBe("success");
+      expect(ports()).toEqual([3, 2, 1, 2]);
+      expect(api.update).not.toHaveBeenCalled();
+      await expect(service.prepare(2, 20, { loginId: 60, targetPort: 2, loginOnly: true })).rejects.toThrow("porta livre");
+      expect(portManeuverInput.safeParse({ loginId: 60, targetPort: 2, swapLoginId: 61, loginOnly: true }).success).toBe(false);
+      sql.exec("INSERT INTO radpop_radio_cliente_fibra(id,id_caixa_ftth,porta_ftth,id_login) VALUES(92,20,1,0)");
+      await expect(service.prepare(2, 20, { loginId: 60, targetPort: 1, loginOnly: true })).rejects.toThrow("ONU sem vínculo");
+    } finally {
+      sql.close();
+    }
+  });
+  it("restaura uma troca concluída por ordem de ocupação, usando porta temporária", async () => {
+    const { sql, service, api, store, ports } = fixture();
+    try {
+      const plan = await service.prepare(2, 20, { loginId: 60, targetPort: 2, swapLoginId: 61 });
+      await service.execute(2, plan.token, 20, access);
+      store.operations.get(plan.token)!.state = "partial";
+      const recovery = await service.prepareRecovery(2, plan.token, 20);
+      expect((await service.execute(2, recovery.token, 20, access)).state).toBe("success");
+      expect(ports()).toEqual([1, 2, 1, 2]);
+      expect(api.update.mock.calls.every(([, p]) => Number(p.porta_ftth) > 0)).toBe(true);
+    } finally {
+      sql.close();
+    }
+  });
   it("recusa outra CTO, mesma porta, fora da capacidade e troca sem ocupante confirmado", async () => {
     const { sql, service, api } = fixture();
     try {
@@ -311,7 +392,7 @@ describe("Manobra de portas na mesma CTO", () => {
       const p = await service.prepare(2, 20, { loginId: 60, targetPort: 2, swapLoginId: 61 });
       const result = await service.execute(2, p.token, 20, access);
       expect(result.state).toBe("partial");
-      expect(ports()).toEqual([0, 2, 0, 2]);
+      expect(ports()).toEqual([3, 2, 3, 2]);
       api.updateLogin.mockImplementation(update);
       const recovery = await service.prepareRecovery(2, p.token, 20);
       expect(recovery.review.mode).toBe("restore");
@@ -404,6 +485,8 @@ it("rotas exigem permissão específica e confirmação literal antes de acessar
   try {
     const token = randomUUID();
     for (const route of [
+      { method: "GET", url: "/logins/60" },
+      { method: "GET", url: "/boxes/20/login-ports/60" },
       { method: "GET", url: "/boxes/20" },
       { method: "POST", url: "/boxes/20/plans", payload: { loginId: 60, targetPort: 3 } },
       { method: "GET", url: `/boxes/20/operations/${token}` },
