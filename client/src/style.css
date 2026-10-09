@@ -1124,6 +1124,14 @@ body:has(.record-detail-dialog[open]) {
   background: #ecfdf5;
   color: #047857;
 }
+.support-case-badge[data-tone="warning"] {
+  color: #854d0e;
+  background: #fef9c3;
+}
+html[data-theme="dark"] .support-case-badge[data-tone="warning"] {
+  color: #fde047;
+  background: rgb(250 204 21 / 16%);
+}
 .support-case-badge[data-tone="danger"] {
   background: #fff1f2;
   color: #be123c;

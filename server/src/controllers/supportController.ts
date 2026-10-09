@@ -4,7 +4,9 @@ import { AuthService } from "../services/AuthService.js";
 import { SupportService } from "../services/support/SupportService.js";
 import { SupportCaseService, casePageQuery } from "../services/support/SupportCaseService.js";
 import { SupportCustomerService } from "../services/support/SupportCustomerService.js";
-import { CustomerAnalysisService } from "../services/support/CustomerAnalysisService.js";
+import { directRetention } from "../services/retention/DirectRetentionService.js";
+import { SupportOrderFilesService } from "../services/support/SupportOrderFilesService.js";
+import { SupportOrdersService, supportOrdersQuery } from "../services/support/SupportOrdersService.js";
 
 const pagination = z.object({
   page: z.coerce.number().int().min(1).max(100_000).default(1),
@@ -25,6 +27,9 @@ export async function supportRoutes(app: FastifyInstance) {
   const service = new SupportService();
   const caseService = new SupportCaseService();
   const customerService = new SupportCustomerService();
+  const orderFiles = new SupportOrderFilesService();
+  const orders = new SupportOrdersService();
+  app.addHook("onClose", () => orders.close());
   app.addHook("onClose", () => service.close());
   app.addHook("onClose", () => customerService.close());
   app.addHook("onClose", () => caseService.close());
@@ -56,6 +61,22 @@ export async function supportRoutes(app: FastifyInstance) {
     await auth.requirePermission(request, "support.customers.view");
     return service.customers(supportCustomerQuery.parse(request.query));
   });
+  for (const path of ["/orders", "/orders/filters"] as const) {
+    app.get(path, options, async (request, reply) => {
+      await auth.requirePermission(request, "support.orders.view");
+      const query = path === "/orders" ? supportOrdersQuery.parse(request.query) : null;
+      const controller = new AbortController();
+      const disconnected = () => {
+        if (!reply.raw.writableEnded) controller.abort();
+      };
+      reply.raw.on("close", disconnected);
+      try {
+        return query ? await orders.list(query, controller.signal) : await orders.filters(controller.signal);
+      } finally {
+        reply.raw.off("close", disconnected);
+      }
+    });
+  }
   app.get("/customers/:id", options, async (request, reply) => {
     await auth.requirePermission(request, "support.customer.view");
     const customerId = ids.parse(request.params).id;
@@ -79,7 +100,7 @@ export async function supportRoutes(app: FastifyInstance) {
     };
     reply.raw.on("close", disconnected);
     try {
-      return await new CustomerAnalysisService().analyze(customerId, controller.signal);
+      return await directRetention.analyze(customerId, controller.signal);
     } finally {
       reply.raw.off("close", disconnected);
     }
@@ -120,6 +141,36 @@ export async function supportRoutes(app: FastifyInstance) {
         }
       });
     }
+  }
+  for (const content of [false, true]) {
+    app.get(`/customers/:id/orders/:caseId/files${content ? "/:fileId/content" : ""}`, options, async (request, reply) => {
+      await auth.requirePermission(request, "support.customer.view", "support.orders.view");
+      const { id, caseId, fileId } = z
+        .object({
+          id: z.coerce.number().int().positive().safe(),
+          caseId: z.coerce.number().int().positive().safe(),
+          fileId: z.coerce.number().int().positive().safe().optional(),
+        })
+        .parse(request.params);
+      const query = casePageQuery.parse(request.query);
+      const controller = new AbortController();
+      const disconnected = () => {
+        if (!reply.raw.writableEnded) controller.abort();
+      };
+      reply.raw.on("close", disconnected);
+      try {
+        if (!content) return await orderFiles.list(id, caseId, query, controller.signal);
+        const file = await orderFiles.content(id, caseId, fileId!, controller.signal);
+        const name = encodeURIComponent(file.name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+        return reply
+          .header("X-Content-Type-Options", "nosniff")
+          .header("Content-Disposition", `attachment; filename*=UTF-8''${name}`)
+          .type(file.contentType)
+          .send(file.buffer);
+      } finally {
+        reply.raw.off("close", disconnected);
+      }
+    });
   }
   app.get("/contracts/:id", options, async (request) => {
     await auth.requirePermission(request, "support.contract.view");

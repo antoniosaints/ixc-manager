@@ -1,4 +1,8 @@
 export const permissionCatalog = [
+  { key: "analytics.dashboard.view", group: "Analytics", label: "Ver painel de gestão (dados conforme permissões dos módulos)" },
+  { key: "network.logins.disconnect", group: "Rede", label: "Desconectar login no IXC (interrompe a sessão do cliente)" },
+  { key: "network.logins.clearMac", group: "Rede", label: "Limpar MAC do login no IXC" },
+  { key: "network.equipment.reboot", group: "Rede", label: "Reiniciar ONU do login (interrompe o acesso)" },
   { key: "network.onus.view", group: "Rede", label: "Consultar ONUs, OLTs, perfis e pendências de autorização" },
   { key: "network.equipment.authorize", group: "Rede", label: "Autorizar e desautorizar equipamentos na OLT (altera o IXC e a rede)" },
   {
@@ -22,10 +26,10 @@ export const permissionCatalog = [
   { key: "churn.workflow.resolve", group: "Churn", label: "Resolver tratativas" },
   { key: "churn.workflow.reopen", group: "Churn", label: "Reabrir as próprias tratativas" },
   { key: "churn.attention.manage", group: "Churn", label: "Marcar e remover atenção crítica" },
-  { key: "churn.recalculate", group: "Processos", label: "Recalcular scores" },
-  { key: "churn.processes.view", group: "Processos", label: "Ver processos de sincronização" },
-  { key: "churn.jobs.view", group: "Processos", label: "Consultar andamento de recálculos" },
-  { key: "churn.sync", group: "Processos", label: "Iniciar sincronização" },
+  { key: "churn.recalculate", group: "Churn", label: "Atualizar análise direta" },
+  { key: "churn.processes.view", group: "Compatibilidade", label: "Ver informação da antiga tela de processos" },
+  { key: "churn.jobs.view", group: "Compatibilidade", label: "Consultar rota antiga de recálculos (desativada)" },
+  { key: "churn.sync", group: "Compatibilidade", label: "Atualizar consulta pela rota antiga de sincronização" },
   { key: "upgrades.opportunities.view", group: "Upgrades", label: "Ver oportunidades" },
   { key: "upgrades.contract.view", group: "Upgrades", label: "Ver detalhes de contratos" },
   { key: "upgrades.plans.view", group: "Upgrades", label: "Ver catálogo de planos" },
@@ -63,7 +67,6 @@ const operator: Permission[] = [
   "churn.notes.create",
   "churn.workflow.resolve",
   "churn.workflow.reopen",
-  "churn.jobs.view",
   "upgrades.opportunities.view",
   "upgrades.contract.view",
   "upgrades.logins.view",
@@ -73,7 +76,12 @@ const operator: Permission[] = [
 export const rolePermissions: Record<string, Permission[]> = {
   USER: ["churn.analytics"],
   OPERATOR: operator,
-  MANAGER: [...operator.filter((key) => key !== "churn.jobs.view"), "churn.dashboard", "churn.attention.manage"],
+  MANAGER: [
+    "analytics.dashboard.view",
+    ...operator.filter((key) => key !== "churn.jobs.view"),
+    "churn.dashboard",
+    "churn.attention.manage",
+  ],
   ADMIN: [...permissionKeys],
 };
 /** Templates are opt-in; existing custom profiles and user overrides remain authoritative. */
@@ -85,7 +93,12 @@ export const accessPresets: { key: string; name: string; description: string; pe
     description: "Operação de retenção, upgrades e atendimento.",
     permissions: rolePermissions.OPERATOR!,
   },
-  { key: "MANAGER", name: "Gestor", description: "Painel de Churn, filas e gestão de atenção.", permissions: rolePermissions.MANAGER! },
+  {
+    key: "MANAGER",
+    name: "Gestor",
+    description: "Analytics, painel de Churn, filas e gestão de atenção.",
+    permissions: rolePermissions.MANAGER!,
+  },
   {
     key: "SUPPORT",
     name: "Suporte",

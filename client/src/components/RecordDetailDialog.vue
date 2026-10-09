@@ -71,7 +71,10 @@ function keyboard(event: KeyboardEvent) {
       <header class="record-detail-dialog-header">
         <span class="support-case-summary-icon !h-9 !w-9 !rounded-lg" aria-hidden="true"><component :is="icon" class="h-5 w-5" /></span>
         <div class="min-w-0 flex-1">
-          <h2 :id="`${id}-title`" class="break-words text-base font-bold">{{ title }}</h2>
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <h2 :id="`${id}-title`" class="min-w-0 break-words text-base font-bold">{{ title }}</h2>
+            <slot name="title-badge" />
+          </div>
           <p v-if="subtitle" :id="`${id}-context`" class="mt-0.5 break-words text-xs text-slate-500">{{ subtitle }}</p>
         </div>
         <button type="button" autofocus class="record-detail-dialog-close" :aria-label="`Fechar ${title}`" @click="emit('close')">

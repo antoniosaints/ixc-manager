@@ -1,0 +1,120 @@
+{
+  "queriedAt": "2026-10-09T15:35:37.395Z",
+  "readOnly": true,
+  "criteria": {
+    "activations": {
+      "statuses": ["A", "I"],
+      "date": "data_ativacao"
+    },
+    "churn": {
+      "status": "I",
+      "date": "data_acesso_desativado",
+      "reasonRelation": "cliente_contrato.motivo_cancelamento = fn_areceber_mot_cancelamento.id",
+      "considerar_churn": "S"
+    },
+    "balance": "activations - churn",
+    "filters": {
+      "customerActive": false,
+      "branch": false
+    }
+  },
+  "checks": {
+    "independentSql": true,
+    "annualMatchesMonthly": true,
+    "closedYearsMatchIxcImage": true,
+    "apiMatchesMysql": {
+      "2024": {
+        "activations": 17856,
+        "churn": 6172
+      },
+      "2025": {
+        "activations": 22217,
+        "churn": 8341
+      },
+      "currentObserved": {
+        "activations": 25612,
+        "churn": 11011
+      }
+    }
+  },
+  "series": [
+    {
+      "year": "2015",
+      "activations": 1,
+      "churn": 0,
+      "balance": 1
+    },
+    {
+      "year": "2016",
+      "activations": 1,
+      "churn": 0,
+      "balance": 1
+    },
+    {
+      "year": "2017",
+      "activations": 312,
+      "churn": 0,
+      "balance": 312
+    },
+    {
+      "year": "2018",
+      "activations": 814,
+      "churn": 0,
+      "balance": 814
+    },
+    {
+      "year": "2019",
+      "activations": 2274,
+      "churn": 0,
+      "balance": 2274
+    },
+    {
+      "year": "2020",
+      "activations": 4639,
+      "churn": 336,
+      "balance": 4303
+    },
+    {
+      "year": "2021",
+      "activations": 7439,
+      "churn": 1581,
+      "balance": 5858
+    },
+    {
+      "year": "2022",
+      "activations": 10080,
+      "churn": 2943,
+      "balance": 7137
+    },
+    {
+      "year": "2023",
+      "activations": 13713,
+      "churn": 5084,
+      "balance": 8629
+    },
+    {
+      "year": "2024",
+      "activations": 17856,
+      "churn": 6172,
+      "balance": 11684
+    },
+    {
+      "year": "2025",
+      "activations": 22217,
+      "churn": 8341,
+      "balance": 13876
+    },
+    {
+      "year": "2026",
+      "activations": 25613,
+      "churn": 11011,
+      "balance": 14602
+    }
+  ],
+  "referenceImageCurrentYear": {
+    "year": 2026,
+    "activations": 25612,
+    "churn": 11007,
+    "balance": 14605
+  }
+}

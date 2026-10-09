@@ -9,6 +9,7 @@ import { useAuthStore } from "../stores/auth";
 import { toast } from "../notifications/toast";
 import LivePagination from "../components/LivePagination.vue";
 import LiveQueryState from "../components/LiveQueryState.vue";
+import LoginTechnologyBadge from "../components/LoginTechnologyBadge.vue";
 import TechnicalStatus from "../components/TechnicalStatus.vue";
 import NetworkMonitorStatus from "../components/NetworkMonitorStatus.vue";
 import NetworkLoginDialog from "../components/NetworkLoginDialog.vue";
@@ -20,6 +21,7 @@ function routeFilters() {
   return {
     registration: String(route.query.registration ?? "active"),
     connection: String(route.query.connection ?? "all"),
+    access: String(route.query.access ?? "all"),
     searchBy: String(route.query.searchBy ?? "login"),
     search: String(route.query.search ?? ""),
     cityId: String(route.query.cityId ?? ""),
@@ -98,7 +100,15 @@ function apply() {
   else void router.replace({ query: Object.fromEntries(Object.entries(q).filter(([, value]) => value !== "")) });
 }
 function clear() {
-  Object.assign(form, { registration: "active", connection: "all", searchBy: "login", search: "", cityId: "", branchId: "" });
+  Object.assign(form, {
+    registration: "active",
+    connection: "all",
+    access: "all",
+    searchBy: "login",
+    search: "",
+    cityId: "",
+    branchId: "",
+  });
   apply();
 }
 function open(row: NetworkLoginRow) {
@@ -156,6 +166,11 @@ function open(row: NetworkLoginRow) {
             <option value="all">Todas as conexões</option>
             <option value="online">Online</option>
             <option value="offline">Offline</option>
+          </select>
+          <label class="sr-only" for="login-access">Situação do acesso</label
+          ><select id="login-access" v-model="form.access" class="input !w-auto" @change="apply">
+            <option value="all">Todos os acessos</option>
+            <option value="released">Acesso liberado · ativos</option>
           </select>
           <label class="sr-only" for="login-city">Cidade</label
           ><select id="login-city" v-model="form.cityId" class="input !w-auto max-w-48" @change="apply">
@@ -246,6 +261,7 @@ function open(row: NetworkLoginRow) {
                 </td>
                 <td>
                   <div class="flex flex-wrap gap-1">
+                    <LoginTechnologyBadge :technology="row.technology" />
                     <TechnicalStatus
                       :label="row.active === true ? 'Ativo' : row.active === false ? 'Inativo' : 'Sem cadastro'"
                       :tone="row.active === true ? 'success' : 'neutral'"

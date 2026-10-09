@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { Headset, ChartNoAxesCombined, Layers3, TrendingUp, Settings2, Banknote, ReceiptText, Network } from "lucide-vue-next";
+import {
+  LayoutDashboard,
+  Headset,
+  ChartNoAxesCombined,
+  Layers3,
+  TrendingUp,
+  Settings2,
+  Banknote,
+  ReceiptText,
+  Network,
+} from "lucide-vue-next";
 import { useRoute } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 
@@ -8,6 +18,9 @@ const auth = useAuthStore();
 const route = useRoute();
 // Register new modules here and identify their routes with meta.module.
 const modules = computed(() => [
+  ...(auth.can("analytics.dashboard.view")
+    ? [{ id: "analytics", label: "Analytics", description: "Gestão e prioridades do provedor", icon: LayoutDashboard, to: "/overview" }]
+    : []),
   ...(auth.home !== "/no-access" &&
   ["churn.dashboard", "churn.analytics", "churn.attention.view", "churn.resolved.view", "churn.processes.view"].some((permission) =>
     auth.can(permission)
@@ -41,8 +54,16 @@ const modules = computed(() => [
         },
       ]
     : []),
-  ...(auth.can("support.customers.view")
-    ? [{ id: "support", label: "Suporte", description: "Consulta e validação de clientes", icon: Headset, to: "/support" }]
+  ...(auth.can("support.customers.view") || auth.can("support.orders.view")
+    ? [
+        {
+          id: "support",
+          label: "Suporte",
+          description: "Clientes e ordens de serviço",
+          icon: Headset,
+          to: auth.can("support.customers.view") ? "/support" : "/support/orders",
+        },
+      ]
     : []),
   ...(auth.can("network.boxes.view") || auth.can("network.logins.list") || auth.can("network.onus.view")
     ? [

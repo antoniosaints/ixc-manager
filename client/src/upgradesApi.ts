@@ -66,6 +66,7 @@ export interface EquipmentTarget {
   reason: string | null;
 }
 export interface UpgradeLogin {
+  technology?: { code: string | null; label: string; kind: string };
   id: number;
   contractId: number;
   customerId: number;

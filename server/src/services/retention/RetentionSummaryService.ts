@@ -1,5 +1,5 @@
 import { IxcReadDatabase, type IxcReadQuery } from "../../integrations/ixc/database/IxcReadDatabase.js";
-import { RetentionRepository } from "../../repositories/RetentionRepository.js";
+import { directRetention, type DirectRetentionService } from "./DirectRetentionService.js";
 import { addDays, referenceDate } from "../upgrades/UpgradeService.js";
 
 /** Operational totals use IXC only; no score calculation, API pagination or writes. */
@@ -32,7 +32,7 @@ const operationalCounts = (row?: Record<string, unknown>) => ({
 export class RetentionSummaryService {
   constructor(
     private readonly reader: Pick<IxcReadDatabase, "select" | "close"> = new IxcReadDatabase(),
-    private readonly repo: Pick<RetentionRepository, "getSummary" | "getOperationalSummary"> = new RetentionRepository(),
+    private readonly repo: Pick<DirectRetentionService, "getSummary"> = directRetention,
     private readonly now: () => Date = () => new Date()
   ) {}
 
@@ -40,11 +40,11 @@ export class RetentionSummaryService {
     await this.reader.close();
   }
 
-  async getSummary() {
+  async getSummary(signal?: AbortSignal) {
     const today = referenceDate(this.now()),
       query = retentionSummarySql(today);
     // A failure in one source must not hide valid indicators from the other.
-    const [operational, risk] = await Promise.all([this.operations(query), this.risk()]);
+    const [operational, risk] = await Promise.all([this.operations(query), this.risk(signal)]);
     return {
       ...operational.counts,
       ...risk.counts,
@@ -52,6 +52,7 @@ export class RetentionSummaryService {
       operationalQueriedAt: operational.source === "database" ? this.now().toISOString() : null,
       riskSource: risk.source,
       riskCalculatedAt: risk.calculatedAt,
+      satisfactionCoverage: risk.satisfactionCoverage,
       referenceDate: today,
       warnings: [...operational.warnings, ...risk.warnings],
     };
@@ -62,26 +63,17 @@ export class RetentionSummaryService {
       const [row] = await this.reader.select<Record<string, unknown>>(query);
       return { counts: operationalCounts(row), source: "database", warnings: [] as string[] };
     } catch {
-      try {
-        const row = await this.repo.getOperationalSummary(String(query.params[0]), String(query.params[1]));
-        return {
-          counts: operationalCounts(row),
-          source: "synchronized",
-          warnings: ["IXC indisponível: ativos, bloqueados e cancelamentos usam a última sincronização e podem estar desatualizados."],
-        };
-      } catch {
-        return {
-          counts: { activeCustomers: null, blocked: null, cancellationsThisMonth: null },
-          source: "unavailable",
-          warnings: ["Ativos, bloqueados e cancelamentos indisponíveis. Tente atualizar os indicadores."],
-        };
-      }
+      return {
+        counts: { activeCustomers: null, blocked: null, cancellationsThisMonth: null },
+        source: "unavailable",
+        warnings: ["Ativos, bloqueados e cancelamentos indisponíveis. Tente atualizar os indicadores."],
+      };
     }
   }
 
-  private async risk() {
+  private async risk(signal?: AbortSignal) {
     try {
-      const row = await this.repo.getSummary();
+      const row = await this.repo.getSummary(signal);
       return {
         counts: {
           lowRisk: count(row?.lowRisk),
@@ -90,8 +82,9 @@ export class RetentionSummaryService {
           highRisk: count(row?.highRisk),
           critical: count(row?.critical),
         },
-        calculatedAt: row?.riskCalculatedAt instanceof Date ? row.riskCalculatedAt.toISOString() : (row?.riskCalculatedAt ?? null),
-        source: "synchronized",
+        calculatedAt: row?.riskCalculatedAt ? new Date(row.riskCalculatedAt).toISOString() : null,
+        source: "database",
+        satisfactionCoverage: row?.satisfactionCoverage,
         warnings: [] as string[],
       };
     } catch {

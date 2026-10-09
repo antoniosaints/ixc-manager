@@ -62,7 +62,7 @@ export interface SupportCustomerDetails extends SupportCustomer {
 }
 export type AnalysisCategory = "financial" | "support" | "network" | "contract" | "satisfaction";
 export interface CustomerAnalysis {
-  customer: { id: number; name: string };
+  customer: { id: number; name: string; satisfaction?: number | null };
   queriedAt: string;
   partial: boolean;
   message: string | null;
@@ -105,6 +105,34 @@ export interface SupportCase {
   message: string | null;
   response: string | null;
 }
+export interface SupportOrderListItem {
+  id: number;
+  customerId: number | null;
+  customerName: string | null;
+  customerActive: boolean | null;
+  protocol: string | null;
+  contractId: number | null;
+  contractName: string | null;
+  loginId: number | null;
+  login: string | null;
+  subjectId: number | null;
+  subjectName: string | null;
+  status: string;
+  priority: string | null;
+  openedAt: string | null;
+  scheduledAt: string | null;
+  closedAt: string | null;
+  technicianId: number | null;
+  technician: string | null;
+  branchId: number | null;
+  branch: string | null;
+  overdue: boolean;
+}
+export interface SupportOrderFilters {
+  subjects: { id: number; name: string }[];
+  technicians: { id: number; name: string }[];
+  branches: { id: number; name: string }[];
+}
 export interface SupportComodato {
   id: number;
   contractId: number;
@@ -135,6 +163,13 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return response.json();
 }
 export const supportApi = {
+  orders: (params: URLSearchParams, signal?: AbortSignal) =>
+    get<
+      LivePage<SupportOrderListItem> & {
+        summary: { total: number; open: number; overdue: number; urgent: number };
+      }
+    >(`/orders?${params}`, signal),
+  orderFilters: (signal?: AbortSignal) => get<SupportOrderFilters>("/orders/filters", signal),
   ...createTechnicalApi("/api/support"),
   login: (id: string, loginId: number, signal?: AbortSignal) =>
     get<{ login: UpgradeLogin; queriedAt: string }>(`/contracts/${encodeURIComponent(id)}/logins/${loginId}`, signal),
@@ -150,6 +185,24 @@ export const supportApi = {
     get<LivePage<SupportCase>>(`/customers/${encodeURIComponent(id)}/${kind}?${params}`, signal),
   caseDetail: (id: string, kind: "orders" | "tickets", caseId: number, signal?: AbortSignal) =>
     get<{ record: SupportCaseDetails; queriedAt: string }>(`/customers/${encodeURIComponent(id)}/${kind}/${caseId}`, signal),
+  orderFiles: (id: string, caseId: number, params: URLSearchParams, signal?: AbortSignal) =>
+    get<LivePage<SupportOrderFile> & { source: "ixc-api" }>(
+      `/customers/${encodeURIComponent(id)}/orders/${caseId}/files?${params}`,
+      signal
+    ),
+  orderFileContent: async (id: string, caseId: number, fileId: number, signal?: AbortSignal) => {
+    const token = localStorage.getItem("retencao-cas.auth-token");
+    const response = await apiFetch(`/api/support/customers/${encodeURIComponent(id)}/orders/${caseId}/files/${fileId}/content`, {
+      signal,
+      cache: "no-store",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.message ?? "Não foi possível abrir o arquivo no IXC.");
+    }
+    return response.blob();
+  },
   caseHistory: (
     id: string,
     kind: "orders" | "tickets",
@@ -201,6 +254,14 @@ export interface SupportCaseDetails extends SupportCase {
   ticketId: number | null;
   reopenReason: string | null;
   stages: { label: string; date: string }[];
+}
+export interface SupportOrderFile {
+  id: number;
+  name: string;
+  description: string | null;
+  uploadedAt: string | null;
+  messageId: number | null;
+  extension: string | null;
 }
 export interface SupportCaseHistory {
   id: string;

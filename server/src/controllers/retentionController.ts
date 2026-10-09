@@ -1,23 +1,15 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import { db } from "../repositories/database.js";
-import { RetentionRepository } from "../repositories/RetentionRepository.js";
-import {
-  enqueueCustomerRecalculate,
-  enqueueFullSync,
-  getRetentionJobStatus,
-  getRetentionQueueStatus,
-  retentionQueue,
-} from "../queues/retentionQueue.js";
+import { directRetention } from "../services/retention/DirectRetentionService.js";
 import { AuthService } from "../services/AuthService.js";
 import { RetentionSummaryService } from "../services/retention/RetentionSummaryService.js";
 
-import { getCustomerRiskSnapshot } from "../services/retention/CustomerRiskSnapshot.js";
 import { createCustomerRiskPdf } from "../services/retention/CustomerRiskPdf.js";
 
-const repo = new RetentionRepository();
 const auth = new AuthService();
 const listQuery = z.object({
+  snapshotId: z.string().uuid().optional(),
   riskLevel: z.enum(["LOW", "ATTENTION", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
   city: z.string().min(1).optional(),
   minScore: z.coerce.number().min(0).max(100).optional(),
@@ -47,74 +39,42 @@ const listQuery = z.object({
 export async function retentionRoutes(app: FastifyInstance) {
   const summary = new RetentionSummaryService();
   app.addHook("onClose", () => summary.close());
+  app.addHook("onRequest", async (_request, reply) => {
+    reply.header("Cache-Control", "no-store");
+  });
+  app.setErrorHandler((error, _request, reply) => {
+    const status = error instanceof z.ZodError ? 400 : ((error as { statusCode?: number }).statusCode ?? 502);
+    reply.code(status).send({
+      message:
+        status === 400
+          ? "Revise os filtros informados."
+          : status < 500
+            ? (error as Error).message
+            : "Não foi possível consultar os dados do Churn. Tente novamente.",
+    });
+  });
   app.addHook("preHandler", async (request) => {
     await auth.requireUser(request);
   });
   app.get("/summary", async (request, reply) => {
     await auth.requirePermission(request, "churn.dashboard");
     reply.header("Cache-Control", "no-store");
-    return summary.getSummary();
+    return summary.getSummary(requestSignal(request, reply));
   });
-  app.get("/customers", async (request) => {
+  app.get("/customers", async (request, reply) => {
     const filter = listQuery.parse(request.query);
     if (filter.attentionOnly) await auth.requirePermission(request, "churn.attention.view");
     else if (filter.workflowStatus === "RESOLVED") await auth.requireAnyPermission(request, "churn.dashboard", "churn.resolved.view");
     else await auth.requirePermission(request, "churn.dashboard");
-    return repo.listCustomers(filter);
+    return directRetention.listCustomers(filter, requestSignal(request, reply));
   });
   app.get("/customers/:customerId", async (request, reply) => {
     await auth.requirePermission(request, "churn.customer.view");
     const { customerId } = z.object({ customerId: z.coerce.number().int().positive() }).parse(request.params);
     const { contractId } = z.object({ contractId: z.coerce.number().int().positive().optional() }).parse(request.query);
-    const snapshot = await getCustomerRiskSnapshot(customerId, contractId);
-    if (!snapshot) return reply.code(404).send({ message: "Cliente ativo não encontrado" });
-    const { customer: data, reasons } = snapshot;
-    const [financial] = await db.query<any[]>(
-      "SELECT id,due_at,status,amount,open_amount,paid_at FROM retention_financial_events WHERE customer_id=? ORDER BY due_at DESC LIMIT 20",
-      [customerId]
-    );
-    const [tickets] = await db.query<any[]>(
-      "SELECT id,title,subject_id,priority,ticket_status,sla_status,created_at_ixc FROM retention_tickets WHERE customer_id=? ORDER BY created_at_ixc DESC LIMIT 20",
-      [customerId]
-    );
-    const [orders] = await db.query<any[]>(
-      "SELECT id,subject_id,priority,status,sla_status,opened_at,closed_at FROM retention_service_orders WHERE customer_id=? ORDER BY opened_at DESC LIMIT 20",
-      [customerId]
-    );
-    const [connection] = await db.query<any[]>(
-      "SELECT date,disconnects,short_sessions,avg_session_seconds,main_terminate_cause FROM retention_connections_daily WHERE customer_id=? AND date>=CURDATE()-INTERVAL 30 DAY ORDER BY date",
-      [customerId]
-    );
-    const [usage] = await db.query<any[]>(
-      "SELECT date,download_consumption,upload_consumption FROM retention_usage_monthly WHERE customer_id=? ORDER BY date DESC LIMIT 6",
-      [customerId]
-    );
-    const [notes] = await db.query<any[]>(
-      "SELECT id,content,created_at FROM retention_customer_notes WHERE customer_id=? ORDER BY created_at DESC,id DESC",
-      [customerId]
-    );
-    const [workflow] = await db.query<any[]>(
-      "SELECT status,resolved_at resolvedAt,resolved_by_user_id resolvedByUserId,updated_at updatedAt FROM retention_customer_workflow WHERE customer_id=?",
-      [customerId]
-    );
-    const [attention] = await db.query<any[]>("SELECT marked_at attentionMarkedAt FROM retention_contract_attention WHERE contract_id=?", [
-      data.contract_id,
-    ]);
-    return {
-      customer: data,
-      reasons,
-      financial,
-      tickets,
-      serviceOrders: orders,
-      connection,
-      usage: usage.reverse(),
-      notes,
-      workflow: {
-        ...(workflow[0] ?? { status: "OPEN", resolvedAt: null }),
-        attentionCritical: Boolean(attention[0]),
-        attentionMarkedAt: attention[0]?.attentionMarkedAt ?? null,
-      },
-    };
+    const details = await directRetention.customerDetails(customerId, contractId, requestSignal(request, reply));
+    if (!details) return reply.code(404).send({ message: "Cliente ou contrato elegível não encontrado" });
+    return details;
   });
   app.get("/customers/:customerId/pdf", { logLevel: "silent" }, async (request, reply) => {
     reply.header("Cache-Control", "no-store");
@@ -122,7 +82,7 @@ export async function retentionRoutes(app: FastifyInstance) {
     try {
       const { customerId } = z.object({ customerId: z.coerce.number().int().positive() }).parse(request.params);
       const { contractId } = z.object({ contractId: z.coerce.number().int().positive().optional() }).parse(request.query);
-      const snapshot = await getCustomerRiskSnapshot(customerId, contractId);
+      const snapshot = await directRetention.getSnapshot(customerId, contractId, requestSignal(request, reply));
       if (!snapshot) return reply.code(404).send({ message: "Cliente ativo não encontrado" });
       const pdf = await createCustomerRiskPdf(snapshot);
       return reply
@@ -173,83 +133,74 @@ export async function retentionRoutes(app: FastifyInstance) {
     const { contractId, critical } = z
       .object({ contractId: z.coerce.number().int().positive(), critical: z.boolean() })
       .parse(request.body);
-    const [contracts] = await db.query<any[]>(
-      "SELECT ct.id,COALESCE(workflow.status,'OPEN') workflow_status FROM retention_contracts ct LEFT JOIN retention_customer_workflow workflow ON workflow.customer_id=ct.customer_id WHERE ct.id=? AND ct.customer_id=? AND ct.status <> 'I'",
-      [contractId, customerId]
-    );
-    if (!contracts[0]) throw Object.assign(new Error("Contrato ativo não encontrado para este cliente"), { statusCode: 404 });
-    if (critical && contracts[0].workflow_status === "RESOLVED")
+    const snapshot = await directRetention.getSnapshot(customerId, contractId);
+    if (!snapshot) throw Object.assign(new Error("Contrato elegível não encontrado para este cliente"), { statusCode: 404 });
+    const [workflow] = await db.query<any[]>("SELECT status FROM retention_customer_workflow WHERE customer_id=?", [customerId]);
+    if (critical && workflow[0]?.status === "RESOLVED")
       throw Object.assign(new Error("Clientes resolvidos não podem ser marcados como críticos"), { statusCode: 409 });
-    if (critical)
+    if (critical) {
+      // Preserve the FK without syncing the portfolio: only this explicitly marked,
+      // IXC-validated contract needs a local reference for the manual priority.
+      await db.execute(
+        "INSERT INTO retention_contracts (id,customer_id,status,plan_name,internet_status,synced_at) VALUES (?,?,?,?,?,NOW()) ON DUPLICATE KEY UPDATE customer_id=VALUES(customer_id),status=VALUES(status),plan_name=VALUES(plan_name),internet_status=VALUES(internet_status),synced_at=VALUES(synced_at)",
+        [contractId, customerId, snapshot.customer.contract_status, snapshot.customer.plan_name, snapshot.customer.internet_status]
+      );
       await db.execute(
         "INSERT INTO retention_contract_attention (contract_id,customer_id,marked_at,marked_by_user_id) VALUES (?,?,NOW(),?) ON DUPLICATE KEY UPDATE marked_at=VALUES(marked_at),marked_by_user_id=VALUES(marked_by_user_id)",
         [contractId, customerId, user.id]
       );
-    else await db.execute("DELETE FROM retention_contract_attention WHERE contract_id=?", [contractId]);
+    } else await db.execute("DELETE FROM retention_contract_attention WHERE contract_id=?", [contractId]);
     return { critical };
   });
-  app.get("/customers/:customerId/timeline", async (request) => {
+  app.get("/customers/:customerId/timeline", async (request, reply) => {
     await auth.requirePermission(request, "churn.customer.view");
     const { customerId } = z.object({ customerId: z.coerce.number().int().positive() }).parse(request.params);
-    const [events] = await db.query<any[]>(
-      `SELECT * FROM (SELECT created_at_ixc at, 'TICKET' type, title description FROM retention_tickets WHERE customer_id=? AND created_at_ixc>=CURDATE()-INTERVAL 90 DAY UNION ALL SELECT opened_at, 'SERVICE_ORDER', CONCAT('OS #',id) FROM retention_service_orders WHERE customer_id=? AND opened_at>=CURDATE()-INTERVAL 90 DAY UNION ALL SELECT due_at, 'FINANCIAL', CONCAT('Fatura vencida: ',status) FROM retention_financial_events WHERE customer_id=? AND due_at>=CURDATE()-INTERVAL 90 DAY UNION ALL SELECT date, 'CONNECTION', CONCAT(disconnects,' desconexões Radius') FROM retention_connections_daily WHERE customer_id=? AND date>=CURDATE()-INTERVAL 90 DAY UNION ALL SELECT event_at, 'CONTRACT', description FROM retention_contract_history WHERE customer_id=? AND event_at>=CURDATE()-INTERVAL 90 DAY) timeline WHERE at IS NOT NULL ORDER BY at DESC`,
-      [customerId, customerId, customerId, customerId, customerId]
-    );
-    return { events };
+    return directRetention.timeline(customerId, requestSignal(request, reply));
   });
-  app.post("/recalculate", async (request) => {
+  // Compatibility endpoints complete within the request; they never enqueue a job.
+  app.post("/recalculate", async (request, reply) => {
     await auth.requirePermission(request, "churn.recalculate");
-    const job = await retentionQueue.add("recalculate", {});
-    return { jobId: job.id, status: "queued" };
+    await directRetention.getSummary(requestSignal(request, reply));
+    return { status: "completed", source: "database" };
   });
-  app.post("/customers/:customerId/recalculate", async (request) => {
+  app.post("/customers/:customerId/recalculate", async (request, reply) => {
     await auth.requirePermission(request, "churn.recalculate");
     const { customerId } = z.object({ customerId: z.coerce.number().int().positive() }).parse(request.params);
-    const result = await enqueueCustomerRecalculate(customerId);
-    return { jobId: result.jobId, status: result.created ? "queued" : "already_running" };
+    if (!(await directRetention.getSnapshot(customerId, undefined, requestSignal(request, reply))))
+      return reply.code(404).send({ message: "Cliente elegível não encontrado" });
+    return { status: "completed", source: "database" };
   });
-  app.post("/sync", async (request) => {
+  app.post("/sync", async (request, reply) => {
     await auth.requirePermission(request, "churn.sync");
-    const result = await enqueueFullSync();
-    return { status: result.created ? "queued" : "already_running", jobId: result.jobId };
+    await directRetention.getSummary(requestSignal(request, reply));
+    return { status: "completed", source: "database", message: "O Churn consulta o IXC diretamente; não é necessária sincronização." };
   });
   app.get("/sync/status", async (request) => {
     await auth.requirePermission(request, "churn.processes.view");
-    return getRetentionQueueStatus();
+    return {
+      source: "database",
+      mode: "direct",
+      counts: { active: 0, waiting: 0, delayed: 0, completed: 0, failed: 0 },
+      jobs: { active: [], waiting: [], delayed: [], completed: [], failed: [] },
+    };
   });
   app.get("/jobs/:jobId", async (request, reply) => {
     await auth.requirePermission(request, "churn.jobs.view");
-    const { jobId } = z.object({ jobId: z.string().min(1).max(64) }).parse(request.params);
-    const job = await getRetentionJobStatus(jobId);
-    if (!job) return reply.code(404).send({ message: "Processo não encontrado" });
-    return job;
+    return reply.code(410).send({ message: "O Churn usa consulta direta. Atualize a análise; não há tarefas em segundo plano." });
   });
-  app.get("/analytics/:dimension", async (request) => {
+  app.get("/analytics/:dimension", async (request, reply) => {
     await auth.requirePermission(request, "churn.analytics");
     const { dimension } = z
       .object({ dimension: z.enum(["cities", "plans", "network-regions", "cancellation-reasons"]) })
       .parse(request.params);
-    if (dimension === "cancellation-reasons") {
-      const [rows] = await db.query<any[]>(
-        `SELECT COALESCE(CONCAT(r.label, ' (ID ', c.cancellation_reason_id, ')'), CONCAT('Motivo não identificado (ID ', c.cancellation_reason_id, ')')) label,
-                COUNT(*) total
-           FROM retention_cancellations c
-           LEFT JOIN retention_cancellation_reasons r ON r.id=c.cancellation_reason_id
-          GROUP BY c.cancellation_reason_id,r.label
-          ORDER BY total DESC`
-      );
-      return { items: rows };
-    }
-    const column =
-      dimension === "cities"
-        ? "COALESCE(city.label,c.city,'Não informado')"
-        : dimension === "plans"
-          ? "ct.plan_name"
-          : "COALESCE(l.concentrator,'Não informado')";
-    const join = `${dimension === "network-regions" ? "LEFT JOIN retention_logins l ON l.customer_id=c.id" : ""} ${dimension === "cities" ? "LEFT JOIN retention_cities city ON city.id=c.city" : ""}`;
-    const [rows] = await db.query<any[]>(
-      `SELECT ${column} label,COUNT(DISTINCT c.id) customers,SUM(rs.risk_level IN ('HIGH','CRITICAL')) highRisk FROM retention_customers c JOIN retention_contracts ct ON ct.customer_id=c.id AND ct.status <> 'I' ${join} JOIN retention_risk_scores rs ON rs.id=(SELECT id FROM retention_risk_scores x WHERE x.contract_id=ct.id ORDER BY calculated_at DESC,id DESC LIMIT 1) WHERE c.active='S' GROUP BY ${column} ORDER BY highRisk DESC`
-    );
-    return { items: rows };
+    return directRetention.analytics(dimension, requestSignal(request, reply));
   });
+}
+
+function requestSignal(_request: FastifyRequest, reply: FastifyReply) {
+  const controller = new AbortController();
+  reply.raw.once("close", () => {
+    if (!reply.raw.writableEnded) controller.abort();
+  });
+  return controller.signal;
 }

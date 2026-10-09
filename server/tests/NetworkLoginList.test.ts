@@ -11,7 +11,7 @@ function fixture() {
   const db = new DatabaseSync(":memory:");
   db.exec(`CREATE TABLE cliente(id INTEGER PRIMARY KEY,razao TEXT,ativo TEXT,cnpj_cpf TEXT,cidade INTEGER,filial_id INTEGER);
  CREATE TABLE cliente_contrato(id INTEGER PRIMARY KEY,id_cliente INTEGER,contrato TEXT,status TEXT,cidade INTEGER,id_filial INTEGER);
- CREATE TABLE radusuarios(id INTEGER PRIMARY KEY,login TEXT,ativo TEXT,ip TEXT,mac TEXT,onu_mac TEXT,id_cliente INTEGER,id_contrato INTEGER,id_caixa_ftth INTEGER,ftth_porta INTEGER,ultima_conexao_inicial TEXT,ultima_conexao_final TEXT,motivo_desconexao TEXT,sinal_ultimo_atendimento TEXT,concentrador TEXT,endereco_padrao_cliente TEXT,cidade INTEGER,id_filial INTEGER);
+ CREATE TABLE radusuarios(id INTEGER PRIMARY KEY,login TEXT,tipo_conexao_mapa TEXT,ativo TEXT,ip TEXT,mac TEXT,onu_mac TEXT,id_cliente INTEGER,id_contrato INTEGER,id_caixa_ftth INTEGER,ftth_porta INTEGER,ultima_conexao_inicial TEXT,ultima_conexao_final TEXT,motivo_desconexao TEXT,sinal_ultimo_atendimento TEXT,concentrador TEXT,endereco_padrao_cliente TEXT,cidade INTEGER,id_filial INTEGER);
  CREATE TABLE rad_caixa_ftth(id INTEGER PRIMARY KEY,descricao TEXT);
  CREATE TABLE radpop_radio_cliente_fibra(id INTEGER PRIMARY KEY,id_login INTEGER,id_contrato INTEGER,id_caixa_ftth INTEGER,porta_ftth INTEGER,mac TEXT,serial_number TEXT);
  CREATE TABLE cidade(id INTEGER PRIMARY KEY,nome TEXT);CREATE TABLE filial(id INTEGER PRIMARY KEY,fantasia TEXT,razao TEXT);
@@ -32,6 +32,7 @@ function fixture() {
  (5,5,11,60,5,'SERIAL5',NULL),(6,5,11,60,5,'SERIAL5',NULL),
  (7,4,20,50,6,'SERIAL4',NULL);
  `);
+  db.exec("ALTER TABLE radusuarios ADD COLUMN online TEXT");
   const read = vi.fn(async (q: any) => {
     assertReadQuery(q);
     return db.prepare(q.sql).all(...q.params);
@@ -65,6 +66,39 @@ describe("Lista geral de logins", () => {
       expect(result.items.find((r) => r.id === 4)).toMatchObject({ contractId: null, ftthBoxId: null });
       expect((await service.detail(2)).login).toMatchObject({ active: false, ftthBoxId: 50, city: "Cidade Contrato" });
       await expect(service.detail(999)).rejects.toMatchObject({ statusCode: 404 });
+    } finally {
+      db.close();
+    }
+  });
+  it("mantém detalhe, filtro e contagens offline após IXC marcar N sem apagar o IP", async () => {
+    const { db, service } = fixture();
+    try {
+      db.exec("UPDATE radusuarios SET online='N' WHERE id=1");
+      expect((await service.detail(1)).login).toMatchObject({ status: "offline", ip: "192.0.2.1" });
+      const offline = await service.list(loginListQuery.parse({ connection: "offline" }));
+      expect(offline.items.map((r) => r.id)).toEqual([4, 3, 1]);
+      expect(offline.summary).toMatchObject({ onlineLogins: 0, offlineLogins: 3 });
+      expect((await service.list(loginListQuery.parse({}))).summary).toMatchObject({ onlineLogins: 1, offlineLogins: 3 });
+      db.exec("UPDATE radusuarios SET online='S' WHERE id=1");
+      expect((await service.detail(1)).login.status).toBe("online");
+    } finally {
+      db.close();
+    }
+  });
+  it("filtra os offline liberados do Analytics com cliente/contrato ativos e vínculo válido", async () => {
+    const { db, service } = fixture();
+    try {
+      db.exec(`ALTER TABLE cliente_contrato ADD COLUMN status_internet TEXT;
+        UPDATE cliente_contrato SET status_internet='A';
+        UPDATE cliente_contrato SET status='A' WHERE id=20;
+        INSERT INTO radusuarios(id,login,ativo,ip,id_cliente,id_contrato,id_caixa_ftth,ftth_porta,endereco_padrao_cliente,cidade,id_filial) VALUES
+          (6,'ana.offline','S',NULL,1,10,40,2,'S',2,2);`);
+      const result = await service.list(loginListQuery.parse({ access: "released", connection: "offline" }));
+      expect(result.items.map((row) => row.id)).toEqual([6]);
+      expect(result.summary).toMatchObject({ total: 1, onlineLogins: 0, offlineLogins: 1 });
+      expect((await service.list(loginListQuery.parse({ access: "released" }))).items.map((row) => row.id)).toEqual([6, 5, 1]);
+      // All keeps the existing default, including inactive clients and mismatched contracts.
+      expect((await service.list(loginListQuery.parse({}))).total).toBe(5);
     } finally {
       db.close();
     }

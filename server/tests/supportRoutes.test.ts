@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { directRetention } from "../src/services/retention/DirectRetentionService.js";
 import { supportRoutes } from "../src/controllers/supportController.js";
 import { AuthService } from "../src/services/AuthService.js";
 import { IxcApiService } from "../src/integrations/ixc/IxcApiService.js";
@@ -30,17 +31,22 @@ describe("Permissões e rotas de Suporte", () => {
     vi.restoreAllMocks();
     const allowed = await setup(["support.customer.view", "support.customer.analyze"]);
     try {
-      allowed.list.mockImplementation(async (endpoint) => ({
-        rows: endpoint === "cliente" ? [{ id: "1", ativo: "S", razao: "Cliente Exemplo" }] : [],
-        total: endpoint === "cliente" ? 1 : 0,
-      }));
+      const analyze = vi.spyOn(directRetention, "analyze").mockResolvedValue({
+        customer: { id: 1, name: "Cliente Exemplo" },
+        contracts: [],
+        partial: false,
+        sources: [],
+        warnings: [],
+        message: null,
+        queriedAt: "2026-10-09T12:00:00Z",
+      } as any);
       const response = await allowed.app.inject({ url: "/api/support/customers/1/analysis", headers });
       expect(response.statusCode).toBe(200);
       expect(response.headers["cache-control"]).toBe("no-store");
       expect(response.json().contracts).toEqual([]);
-      const before = allowed.list.mock.calls.length;
+      const before = analyze.mock.calls.length;
       expect((await allowed.app.inject({ url: "/api/support/customers/0/analysis", headers })).statusCode).toBe(400);
-      expect(allowed.list.mock.calls.length).toBe(before);
+      expect(analyze.mock.calls.length).toBe(before);
       expect((await allowed.app.inject({ method: "POST", url: "/api/support/customers/1/analysis", headers })).statusCode).toBe(404);
     } finally {
       await allowed.app.close();

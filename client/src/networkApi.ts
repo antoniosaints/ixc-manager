@@ -28,6 +28,7 @@ export interface NetworkBox {
   invalidPorts: number;
 }
 export interface NetworkLogin {
+  technology?: { code: string | null; label: string; kind: string };
   id: number;
   login: string | null;
   active: boolean | null;

@@ -32,5 +32,5 @@ const options = computed(() => ({
 }));
 </script>
 <template>
-  <div class="h-60"><Doughnut :data="data" :options="options" /></div>
+  <div class="h-full w-full"><Doughnut :data="data" :options="options" /></div>
 </template>

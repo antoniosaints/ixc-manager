@@ -73,3 +73,43 @@ it("repete uma atualização pedida durante outra para não perder mudanças de 
   expect(store.summary.critical).toBe(2);
   expect(store.summaryLoading).toBe(false);
 });
+it("usa a versão curta da lista ao paginar e filtrar, mas Atualizar painel sempre busca uma nova", async () => {
+  const snapshotId = "00000000-0000-4000-8000-000000000001";
+  vi.mocked(api.customers).mockResolvedValue({
+    items: [],
+    total: 10,
+    snapshotId,
+    queriedAt: new Date().toISOString(),
+    reuseUntil: new Date(Date.now() + 30000).toISOString(),
+  });
+  const store = useRetentionStore();
+  await store.loadDashboard(new URLSearchParams(), true);
+  expect(vi.mocked(api.customers).mock.calls[0]?.[0].has("snapshotId")).toBe(false);
+  await store.loadDashboard(new URLSearchParams("page=2"));
+  expect(vi.mocked(api.customers).mock.calls[1]?.[0].get("snapshotId")).toBe(snapshotId);
+  await store.loadDashboard(new URLSearchParams("riskLevel=HIGH"));
+  expect(vi.mocked(api.customers).mock.calls[2]?.[0].get("snapshotId")).toBe(snapshotId);
+  await store.loadDashboard(new URLSearchParams(), true);
+  expect(vi.mocked(api.customers).mock.calls[3]?.[0].has("snapshotId")).toBe(false);
+  store.listReuseUntil = new Date(Date.now() - 1).toISOString();
+  await store.loadDashboard(new URLSearchParams("page=2"));
+  expect(vi.mocked(api.customers).mock.calls[4]?.[0].has("snapshotId")).toBe(false);
+});
+it("cancela a requisição do filtro anterior sem substituir os dados do filtro atual", async () => {
+  let release!: (value: { items: []; total: number }) => void;
+  vi.mocked(api.customers).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        release = resolve;
+      })
+  );
+  const store = useRetentionStore(),
+    previous = store.loadDashboard(new URLSearchParams("search=antigo"));
+  const firstSignal = vi.mocked(api.customers).mock.calls[0]?.[1];
+  await store.loadDashboard(new URLSearchParams("search=atual"));
+  expect(firstSignal?.aborted).toBe(true);
+  release({ items: [], total: 99 });
+  await previous;
+  expect(store.total).toBe(10);
+  expect(store.error).toBe("");
+});

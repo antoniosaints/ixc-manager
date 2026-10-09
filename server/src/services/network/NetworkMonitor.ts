@@ -2,7 +2,7 @@ import type { WebSocket } from "ws";
 import { z } from "zod";
 import type { IxcReadDatabase, IxcReadQuery } from "../../integrations/ixc/database/IxcReadDatabase.js";
 import { connectionSubscription, subscriptionScope, type ConnectionScope } from "./ConnectionMonitorScope.js";
-import { connectedIpSql, connectionIp } from "./LoginConnection.js";
+import { connectedLoginSql, connectionIp, connectionStatus } from "./LoginConnection.js";
 export { networkSubscription, connectionPermissions } from "./ConnectionMonitorScope.js";
 
 export interface ConnectionState {
@@ -40,7 +40,7 @@ export function connectionMonitorSql(scope: ConnectionScope): IxcReadQuery {
   return {
     name: "network-connection-monitor",
     sql: `SELECT r.id,COALESCE(r.id_caixa_ftth,0) boxId,r.ativo active,
-      CASE WHEN ${connectedIpSql} THEN 'S' ELSE 'N' END online,r.ip,r.ftth_porta port
+      CASE WHEN ${connectedLoginSql} THEN 'S' ELSE 'N' END online,r.ip,r.ftth_porta port
       FROM radusuarios r WHERE ${where} ORDER BY r.id LIMIT 5001`,
     params,
     timeoutSeconds: 5,
@@ -233,7 +233,7 @@ export class NetworkMonitor {
         boxId: Number(row.boxId),
         port: row.port == null ? null : Number(row.port),
         ip: connectionIp(row.ip),
-        online: connectionIp(row.ip) ? "S" : "N",
+        online: connectionStatus(row.ip, row.online) === "online" ? "S" : "N",
       }));
       const delta = connectionChanges(channel.previous, current);
       channel.previous = current;

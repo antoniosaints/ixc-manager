@@ -23,6 +23,15 @@ export default defineConfig({
       // SQL financial reads have individual server deadlines and can include
       // historical balances. Keep this rule before the general /api rule.
       "/api/finance": { target: backendTarget, changeOrigin: true, timeout: 90_000, proxyTimeout: 75_000 },
+      // Direct Churn aggregates have a 45-second total deadline on the backend.
+      "/api/retention": { target: backendTarget, changeOrigin: true, timeout: 65_000, proxyTimeout: 60_000 },
+      "^/api/support/customers/[0-9]+/analysis(?:\\?.*)?$": {
+        target: backendTarget,
+        changeOrigin: true,
+        timeout: 65_000,
+        proxyTimeout: 60_000,
+      },
+      "/api/provider-analytics": { target: backendTarget, changeOrigin: true, timeout: 90_000, proxyTimeout: 85_000 },
       // Use IPv4 explicitly. Some environments resolve localhost differently
       // between the browser and Vite, leaving the dashboard polling forever.
       "/api": { target: backendTarget, changeOrigin: true, timeout: 8_000, proxyTimeout: 8_000 },

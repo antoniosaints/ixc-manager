@@ -4,6 +4,7 @@ import { Network, ChevronRight } from "lucide-vue-next";
 import { type UpgradeLogin } from "../upgradesApi";
 import { loginStatus } from "../supportApi";
 import LoginDetails from "./LoginDetails.vue";
+import LoginTechnologyBadge from "./LoginTechnologyBadge.vue";
 import TechnicalStatus from "./TechnicalStatus.vue";
 import RecordDetailDialog from "./RecordDetailDialog.vue";
 const props = withDefaults(
@@ -64,6 +65,7 @@ function close() {
           {{ login.ip ?? "Sem IP" }}</span
         ></span
       >
+      <LoginTechnologyBadge :technology="login.technology" />
       <TechnicalStatus
         :label="loginStatus(login.status)"
         :tone="login.status === 'online' ? 'success' : login.status === 'offline' ? 'danger' : 'neutral'"
@@ -82,6 +84,7 @@ function close() {
     :module="module"
     @close="close"
   >
+    <template #title-badge><LoginTechnologyBadge :technology="selected.technology" /></template>
     <div class="support-case-detail">
       <LoginDetails :login="selected" :module="module" :contract-id="String(selected.contractId ?? '')" :initial-tab="initialTab" />
     </div>

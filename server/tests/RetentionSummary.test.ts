@@ -32,7 +32,7 @@ describe("Indicadores independentes do Churn", () => {
       highRisk: 4,
       critical: 5,
       operationalSource: "database",
-      riskSource: "synchronized",
+      riskSource: "database",
       referenceDate: "2026-09-30",
       riskCalculatedAt: "2026-09-29T12:00:00.000Z",
       warnings: [],
@@ -72,13 +72,12 @@ describe("Indicadores independentes do Churn", () => {
       sqlite.close();
     }
   });
-  it("usa o fallback sem scores e avisa sobre a sincronização sem expor erros SQL", async () => {
+  it("não depende mais da sincronização quando IXC falha; preserva o risco disponível", async () => {
     const { service, reader, repo } = fixture();
     reader.select.mockRejectedValue(new Error("SQL_PASSWORD_NAO_EXPOR"));
     const result = await service.getSummary();
-    expect(result).toMatchObject({ activeCustomers: 12, critical: 5, operationalSource: "synchronized", operationalQueriedAt: null });
-    expect(repo.getOperationalSummary).toHaveBeenCalledWith("2026-09-01", "2026-10-01");
-    expect(result.warnings[0]).toContain("desatualizados");
+    expect(result).toMatchObject({ activeCustomers: null, critical: 5, operationalSource: "unavailable", operationalQueriedAt: null });
+    expect(repo.getOperationalSummary).not.toHaveBeenCalled();
     expect(JSON.stringify(result)).not.toContain("SQL_PASSWORD_NAO_EXPOR");
   });
   it("não substitui indisponibilidade por zero e mantém o risco disponível", async () => {

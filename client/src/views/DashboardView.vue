@@ -15,6 +15,7 @@ import {
 } from "lucide-vue-next";
 import { useRetentionStore } from "../stores/retention";
 import ChurnCustomerTable from "../components/ChurnCustomerTable.vue";
+import LoadErrorState from "../components/LoadErrorState.vue";
 import { useAuthStore } from "../stores/auth";
 import { api } from "../api";
 import { toast } from "../notifications/toast";
@@ -184,8 +185,13 @@ onMounted(refresh);
         <template v-else-if="store.summary.operationalSource === 'synchronized'"
           >Ativos, bloqueados e cancelamentos: última sincronização.</template
         >
-        <template v-if="store.summary.riskCalculatedAt"> Risco: último score em {{ timestamp(store.summary.riskCalculatedAt) }}.</template>
-        <template v-else-if="store.summary.riskSource === 'synchronized'"> Nenhum score calculado.</template>
+        <template v-if="store.summary.riskCalculatedAt">
+          Risco: consulta ao IXC em {{ timestamp(store.summary.riskCalculatedAt) }}.</template
+        >
+        <template v-if="store.summary.riskSource === 'database' && store.summary.satisfactionCoverage">
+          · Satisfação informada: {{ store.summary.satisfactionCoverage.rated.toLocaleString("pt-BR") }} de
+          {{ store.summary.satisfactionCoverage.total.toLocaleString("pt-BR") }} clientes elegíveis.
+        </template>
       </p>
       <button
         type="button"
@@ -212,7 +218,16 @@ onMounted(refresh);
       <div class="relative border-b border-slate-100 px-4 py-3">
         <div class="mb-3 flex flex-wrap items-center gap-2">
           <h2 class="text-sm font-bold">Clientes em risco</h2>
-          <span class="text-[11px] text-slate-400">{{ store.total.toLocaleString("pt-BR") }} encontrados · maior score primeiro</span>
+          <span class="text-[11px] text-slate-400">{{
+            store.loading
+              ? "Consultando clientes…"
+              : store.error
+                ? "Lista indisponível"
+                : `${store.total.toLocaleString("pt-BR")} ${store.total === 1 ? "encontrado" : "encontrados"} · maior score primeiro`
+          }}</span>
+          <span v-if="store.listQueriedAt && !store.error" class="ml-auto text-[10px] text-slate-500"
+            >Lista consultada em {{ timestamp(store.listQueriedAt) }} · Atualizar painel busca dados atuais.</span
+          >
         </div>
         <form class="flex flex-wrap items-center gap-2" @submit.prevent="load(true)">
           <label class="sr-only" for="churn-level">Nível de risco</label
@@ -278,12 +293,13 @@ onMounted(refresh);
           </div>
         </form>
       </div>
-      <div v-if="store.error" role="alert" class="flex flex-wrap items-center justify-between gap-3 p-4 text-xs text-red-600">
-        <span>{{ store.error }}</span
-        ><button type="button" class="button-secondary" @click="load()">
-          <RefreshCw class="inline h-3.5 w-3.5 shrink-0 align-middle" aria-hidden="true" focusable="false" /> Tentar novamente
-        </button>
-      </div>
+      <LoadErrorState
+        v-if="store.error"
+        :error="store.error"
+        title="Não foi possível carregar os clientes"
+        hint="Seus filtros foram mantidos. Tente novamente para carregar a lista."
+        @retry="load()"
+      />
       <div v-else-if="store.loading" role="status" class="flex min-h-40 flex-col items-center justify-center gap-1 text-xs text-slate-500">
         <img src="/infinite-spinner.svg" alt="" class="h-12 w-20" />Carregando dados analíticos…
       </div>
@@ -313,6 +329,7 @@ onMounted(refresh);
         >
       </ChurnCustomerTable>
       <footer
+        v-if="!store.error && !store.loading"
         class="relative flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-2 text-[11px] text-slate-500"
       >
         <span>Ordenado pelo maior score</span>

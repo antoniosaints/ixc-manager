@@ -1,5 +1,6 @@
 import { isIP } from "node:net";
 import { connectionIp, connectionStatus } from "../network/LoginConnection.js";
+import { loginTechnology } from "../network/LoginTechnology.js";
 type Row = Record<string, unknown>;
 const text = (value: unknown) => (value == null ? "" : String(value).trim());
 const optional = (value: unknown) => text(value) || null;
@@ -109,7 +110,7 @@ const authenticationLabels: Record<string, string> = {
   E: "Externa",
 };
 export function loginDetails(row: Row, allowAccess: boolean) {
-  const status = connectionStatus(row.ip);
+  const status = connectionStatus(row.ip, row.online);
   return {
     id: positive(row.id),
     contractId: positive(row.id_contrato),
@@ -119,6 +120,7 @@ export function loginDetails(row: Row, allowAccess: boolean) {
     status,
     authentication: authenticationLabels[text(row.autenticacao)] ?? optional(row.autenticacao),
     connectionType: optional(row.tipo_conexao),
+    technology: loginTechnology(row.tipo_conexao_mapa),
     ip: connectionIp(row.ip),
     auxiliaryIp: optional(row.ip_aux),
     mac: optional(row.mac),

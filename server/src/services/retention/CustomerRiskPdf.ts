@@ -17,8 +17,10 @@ export interface CustomerRiskReport {
     network_score: number | null;
     contract_score: number | null;
     satisfaction_score: number | null;
+    satisfaction?: number | null;
   };
   reasons: { category: string; description: string; points: number }[];
+  warnings?: string[];
 }
 const labels: Record<string, string> = {
   LOW: "Baixo",
@@ -38,7 +40,7 @@ const timestamp = (value: string | Date | null | undefined) => {
   return Number.isNaN(date.getTime()) ? "Não disponível" : date.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 };
 
-/** Generated in memory; the report contains only identification and the stored risk analysis. */
+/** Generated in memory; the report contains only identification and the selected risk analysis. */
 export function createCustomerRiskPdf(report: CustomerRiskReport, generatedAt = new Date()): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -92,6 +94,8 @@ export function createCustomerRiskPdf(report: CustomerRiskReport, generatedAt = 
       write([customer.city, customer.neighborhood].filter(Boolean).join(" · ") || "Localidade não informada", 8, false, "#64748b");
       doc.y += 4;
       write(`Plano: ${customer.plan_name || "Não informado"}`, 9);
+      if ("satisfaction" in customer)
+        write(customer.satisfaction == null ? "Satisfação não informada no IXC." : `Satisfação no IXC: ${customer.satisfaction}/5`, 8);
       section("Análise de risco");
       write(
         customer.score == null

@@ -92,6 +92,15 @@ export class IxcOnuApi {
   deauthorize(id: number) {
     return this.command("post", "/botao_excluir_dispositivo_22434", { id: String(id) });
   }
+  disconnectLogin(id: number) {
+    return this.command("post", "/desconectar_clientes", { id: String(id) });
+  }
+  clearLoginMac(id: number) {
+    return this.command("post", "/radusuarios_25452", { get_id: String(id) });
+  }
+  rebootOnu(id: number) {
+    return this.command("post", "/radpop_radio_cliente_fibra_26379", { id: String(id) });
+  }
 }
 /** IXC's list uses a base64 PHP scalar array. Never evaluate/unserialize PHP or accept objects. */
 export function pendingOnuDto(row: OnuRow) {

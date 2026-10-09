@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { loginTechnology } from "./LoginTechnology.js";
 import { IxcReadDatabase, type IxcReadQuery, type IxcReadSession } from "../../integrations/ixc/database/IxcReadDatabase.js";
 import { dateOnly } from "../upgrades/UpgradeService.js";
-import { connectedIpSql, connectionIp, connectionStatus } from "./LoginConnection.js";
+import { connectedLoginSql, connectionIp, connectionStatus } from "./LoginConnection.js";
 
 const pageQuery = z.object({
   page: z.coerce.number().int().min(1).max(100000).default(1),
@@ -37,7 +38,7 @@ const like = (v: string) => `%${v.replace(/[!%_]/g, (c) => `!${c}`)}%`;
 const fail = () => Object.assign(new Error("Caixa de atendimento não encontrada no IXC."), { statusCode: 404 });
 const stats = `SELECT r.id_caixa_ftth,COUNT(*) totalLogins,
  SUM(r.ativo='S') activeLogins,SUM(r.ativo='N') inactiveLogins,
- SUM(r.ativo='S' AND ${connectedIpSql}) onlineLogins,SUM(r.ativo='S' AND NOT (${connectedIpSql})) offlineLogins,
+ SUM(r.ativo='S' AND ${connectedLoginSql}) onlineLogins,SUM(r.ativo='S' AND NOT (${connectedLoginSql})) offlineLogins,
  0 unknownLogins,
  COUNT(DISTINCT CASE WHEN r.ativo='S' AND r.ftth_porta>0 AND (COALESCE(b2.capacidade,0)<=0 OR r.ftth_porta<=b2.capacidade) THEN r.ftth_porta END) occupiedPorts,
  SUM(r.ativo='S' AND r.ftth_porta>0 AND (COALESCE(b2.capacidade,0)<=0 OR r.ftth_porta<=b2.capacidade)) validPortLogins,
@@ -105,7 +106,7 @@ export function networkLoginsSql(boxId: number, q: LoginQuery, loginId?: number)
   }
   if (q.connection === "unknown") where += " AND 1=0";
   else if (q.connection !== "all") {
-    where += ` AND ${q.connection === "online" ? connectedIpSql : `NOT (${connectedIpSql})`}`;
+    where += ` AND ${q.connection === "online" ? connectedLoginSql : `NOT (${connectedLoginSql})`}`;
   }
   if (q.search) {
     where += " AND (r.login LIKE ? ESCAPE '!' OR c.razao LIKE ? ESCAPE '!' OR r.ip LIKE ? ESCAPE '!')";
@@ -117,7 +118,7 @@ export function networkLoginsSql(boxId: number, q: LoginQuery, loginId?: number)
     count: { name: "network-login-count", sql: `SELECT COUNT(*) total ${from}`, params, timeoutSeconds: 5 } as IxcReadQuery,
     list: {
       name: "network-login-list",
-      sql: `SELECT r.id,r.login,r.ativo,r.online,r.ftth_porta,r.id_cliente,r.id_contrato,r.ip,r.mac,r.onu_mac,
+      sql: `SELECT r.id,r.login,r.tipo_conexao_mapa,r.ativo,r.online,r.ftth_porta,r.id_cliente,r.id_contrato,r.ip,r.mac,r.onu_mac,
       r.ultima_conexao_inicial,r.ultima_conexao_final,r.motivo_desconexao,r.sinal_ultimo_atendimento,r.concentrador,
       c.razao customerName,c.ativo customerActive,ct.id validContractId,ct.contrato contractName,ct.status contractStatus
       ${from} ORDER BY CASE WHEN r.ftth_porta>0 THEN 0 ELSE 1 END,r.ftth_porta,r.id LIMIT ? OFFSET ?`,
@@ -172,8 +173,9 @@ export function networkLoginDto(row: Row) {
   return {
     id: number(row.id),
     login: text(row.login),
+    technology: loginTechnology(row.tipo_conexao_mapa),
     active: flag(row.ativo),
-    status: connectionStatus(row.ip),
+    status: connectionStatus(row.ip, row.online),
     port: positive(row.ftth_porta),
     customerId: positive(row.id_cliente),
     customerName: text(row.customerName),

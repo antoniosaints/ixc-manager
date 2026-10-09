@@ -1,4 +1,4 @@
-import { getRiskLevel, riskConfig } from "../../config/risk.js";
+import { getRiskLevel, riskConfig, riskThresholds, type RiskThresholds } from "../../config/risk.js";
 import type { RiskContext, RiskReason, RiskResult } from "../../types/retention.js";
 
 type Category = RiskReason["category"];
@@ -21,7 +21,7 @@ const add = (
 const capped = (result: PartialRisk, max: number): PartialRisk => ({ points: Math.min(result.points, max), reasons: result.reasons });
 
 export class RetentionRiskEngine {
-  calculate(context: RiskContext): RiskResult {
+  calculate(context: RiskContext, thresholds: Omit<RiskThresholds, "low"> = riskThresholds): RiskResult {
     const financial = this.calculateFinancialRisk(context);
     const support = this.calculateSupportRisk(context);
     const network = this.calculateNetworkRisk(context);
@@ -30,7 +30,7 @@ export class RetentionRiskEngine {
     const score = [financial, support, network, contract, satisfaction].reduce((sum, item) => sum + item.points, 0);
     return {
       score,
-      level: getRiskLevel(score),
+      level: getRiskLevel(score, thresholds),
       factors: {
         financial: financial.points,
         support: support.points,

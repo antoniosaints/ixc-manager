@@ -72,7 +72,7 @@ const categories = [
     label: "Satisfação",
     max: 10,
     icon: Smile,
-    sources: ["customer"],
+    sources: ["contracts"],
     action: "Investigue o motivo da insatisfação e registre uma expectativa objetiva para o próximo atendimento no fluxo habitual.",
   },
 ] as const;
@@ -240,6 +240,13 @@ const keydown = (event: KeyboardEvent) => {
                   </p>
                   <p class="mt-1 text-lg font-bold tabular-nums">
                     {{ selected.factors[category.key] }}<span class="text-[11px] font-normal text-slate-400"> / {{ category.max }}</span>
+                  </p>
+                  <p v-if="category.key === 'satisfaction'" class="mt-1 text-[10px] text-slate-500">
+                    {{
+                      analysis.customer.satisfaction == null
+                        ? "Nota não informada no IXC"
+                        : `Nota no IXC: ${analysis.customer.satisfaction}/5`
+                    }}
                   </p>
                   <p v-if="incomplete(category.key)" class="mt-1 text-[10px] text-amber-700">Dados parciais</p>
                 </div>

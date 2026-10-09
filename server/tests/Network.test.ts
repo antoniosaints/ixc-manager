@@ -19,7 +19,7 @@ function fixture() {
   db.exec(`CREATE TABLE rad_caixa_ftth (id INTEGER PRIMARY KEY,descricao TEXT,status TEXT,capacidade INTEGER,endereco TEXT,numero TEXT,bairro TEXT,cep TEXT,latitude TEXT,longitude TEXT,id_projeto INTEGER,id_transmissor INTEGER,id_interface INTEGER,obs_caixa_ftth TEXT,ultima_atualizacao TEXT,id_cidade INTEGER);
  CREATE TABLE cidade (id INTEGER PRIMARY KEY,nome TEXT);CREATE TABLE radpop_radio (id INTEGER PRIMARY KEY,descricao TEXT);
  CREATE TABLE cliente (id INTEGER PRIMARY KEY,razao TEXT,ativo TEXT);CREATE TABLE cliente_contrato (id INTEGER PRIMARY KEY,id_cliente INTEGER,contrato TEXT,status TEXT);
- CREATE TABLE radusuarios (id INTEGER PRIMARY KEY,id_caixa_ftth INTEGER,ativo TEXT,online TEXT,ftth_porta INTEGER,login TEXT,id_cliente INTEGER,id_contrato INTEGER,ip TEXT,mac TEXT,onu_mac TEXT,ultima_conexao_inicial TEXT,ultima_conexao_final TEXT,motivo_desconexao TEXT,sinal_ultimo_atendimento TEXT,concentrador TEXT);
+ CREATE TABLE radusuarios (id INTEGER PRIMARY KEY,id_caixa_ftth INTEGER,ativo TEXT,online TEXT,ftth_porta INTEGER,login TEXT,id_cliente INTEGER,id_contrato INTEGER,ip TEXT,mac TEXT,onu_mac TEXT,ultima_conexao_inicial TEXT,ultima_conexao_final TEXT,motivo_desconexao TEXT,sinal_ultimo_atendimento TEXT,concentrador TEXT,tipo_conexao_mapa TEXT);
  INSERT INTO cidade VALUES (1,'Cidade Teste');INSERT INTO radpop_radio VALUES(1,'OLT Teste');INSERT INTO cliente VALUES(1,'Cliente Teste','S'),(2,'Cliente Inativo','N');INSERT INTO cliente_contrato VALUES (1,1,'Plano Teste','A'),(2,2,'Plano Antigo','I');
  INSERT INTO rad_caixa_ftth(id,descricao,status,capacidade,id_cidade,id_transmissor,latitude,longitude) VALUES (1,'Caixa Centro','A',4,1,1,'-4,1','-44.1'),(2,'Caixa Antiga','I',8,1,1,NULL,NULL),(3,'Caixa Sem Capacidade','A',0,1,1,NULL,NULL),(4,'Caixa % Teste','A',8,1,1,NULL,NULL);
  INSERT INTO radusuarios (id,id_caixa_ftth,ativo,online,ftth_porta,login,id_cliente,id_contrato,ip) VALUES
@@ -43,7 +43,7 @@ describe("Rede: contagens e vínculos somente de leitura", () => {
     try {
       const result = await service.boxes(boxesQuery.parse({}));
       expect(result.total).toBe(3);
-      expect(result.summary).toEqual({ boxes: 3, activeLogins: 6, onlineLogins: 3, offlineLogins: 3, unknownLogins: 0 });
+      expect(result.summary).toEqual({ boxes: 3, activeLogins: 6, onlineLogins: 1, offlineLogins: 5, unknownLogins: 0 });
       const box = result.items.find((b) => b.id === 1)!;
       expect((await service.detail(1)).box).toEqual(box);
       await expect(service.detail(99)).rejects.toMatchObject({ statusCode: 404 });
@@ -66,7 +66,7 @@ describe("Rede: contagens e vínculos somente de leitura", () => {
       db.close();
     }
   });
-  it("filtra pela presença de IP, independentemente do indicador online antigo, e valida os contratos", async () => {
+  it("prioriza o estado IXC mesmo com IP preenchido, e valida os contratos", async () => {
     const { db, service } = fixture();
     try {
       expect(
@@ -74,10 +74,11 @@ describe("Rede: contagens e vínculos somente de leitura", () => {
       ).toEqual([]);
       expect(
         (await service.logins(1, boxLoginsQuery.parse({ connection: "online", registration: "active" }))).items.map((l) => l.id).sort()
-      ).toEqual([1, 2, 3]);
+      ).toEqual([1]);
       expect(
         (await service.logins(1, boxLoginsQuery.parse({ connection: "offline", registration: "active" }))).items.map((l) => l.id).sort()
-      ).toEqual([4, 5, 9]);
+      ).toEqual([2, 3, 4, 5, 9]);
+      expect((await service.login(1, 2)).login).toMatchObject({ status: "offline", ip: "100.64.0.2" });
       const all = await service.logins(1, boxLoginsQuery.parse({}));
       expect(all.total).toBe(7);
       expect(all.items.find((l) => l.id === 9)?.contractStatus).toBeNull();

@@ -98,10 +98,10 @@ describe("Monitor de Rede por WebSocket", () => {
     for (const boxIds of [[], [0], ["1 OR 1=1"], [Number.MAX_SAFE_INTEGER + 1], Array(26).fill(1)])
       expect(networkSubscription.safeParse({ type: "auth", token: "session", boxIds }).success).toBe(false);
   });
-  it("entrega mudanças por um socket real, compartilha leitura e interrompe após revogação/fechamento", async () => {
+  it("entrega desconexão IXC com IP retido por socket real, compartilha leitura e interrompe após revogação/fechamento", async () => {
     const sqlite = new DatabaseSync(":memory:");
     sqlite.exec(`CREATE TABLE radusuarios(id INTEGER PRIMARY KEY,id_caixa_ftth INTEGER,ativo TEXT,online TEXT,ftth_porta INTEGER,ip TEXT);
-      INSERT INTO radusuarios VALUES(1,1,'S','N',1,'192.0.2.1'),(2,1,'S','S',2,NULL),(3,2,'S','S',1,'192.0.2.3');`);
+      INSERT INTO radusuarios VALUES(1,1,'S','S',1,'192.0.2.1'),(2,1,'S','S',2,NULL),(3,2,'S','S',1,'192.0.2.3');`);
     let allowed = true;
     const read = vi.fn(async (q: IxcReadQuery) => {
       assertReadQuery(q);
@@ -143,13 +143,13 @@ describe("Monitor de Rede por WebSocket", () => {
       read.mockRejectedValueOnce(new Error("SQL with PRIVATE-DETAILS"));
       await vi.waitFor(() => expect(first.some((m) => m.type === "unavailable")).toBe(true));
       expect(JSON.stringify(first)).not.toContain("PRIVATE-DETAILS");
-      sqlite.exec("UPDATE radusuarios SET ip=NULL WHERE id=1");
+      sqlite.exec("UPDATE radusuarios SET online='N' WHERE id=1");
       await vi.waitFor(() => expect(first.some((m) => m.offlineCount === 1)).toBe(true));
       expect(second.some((m) => m.offlineCount === 1)).toBe(true);
       expect(read.mock.calls.length - before).toBe(2); // One failed read + one recovery, shared by both sockets.
       expect(first.find((m) => m.offlineCount === 1)).toMatchObject({
         offline: [{ id: 1, boxId: 1 }],
-        connections: [{ id: 1, online: "N" }],
+        connections: [{ id: 1, online: "N", ip: "192.0.2.1" }],
       });
       const closed = new Promise<number>((resolve) => one.once("close", resolve));
       allowed = false;

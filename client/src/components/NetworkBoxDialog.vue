@@ -16,6 +16,9 @@ import LiveQueryState from "./LiveQueryState.vue";
 import TechnicalStatus from "./TechnicalStatus.vue";
 import ContractFields from "./ContractFields.vue";
 import NetworkMonitorStatus from "./NetworkMonitorStatus.vue";
+import LoginActions from "./LoginActions.vue";
+import LoginNetworkTabs from "./LoginNetworkTabs.vue";
+import LoginTechnologyBadge from "./LoginTechnologyBadge.vue";
 import LoginSignalCard from "./LoginSignalCard.vue";
 const props = defineProps<{ boxId: number; boxName: string; initialConnection?: string }>();
 const emit = defineEmits<{ close: [] }>();
@@ -299,6 +302,7 @@ const statusLabel = (status: string) => (status === "online" ? "Online" : status
                   >
                 </td>
                 <td>
+                  <LoginTechnologyBadge class="mb-1" :technology="login.technology" />
                   <TechnicalStatus
                     :label="login.active === true ? 'Ativo' : login.active === false ? 'Inativo' : 'Sem status'"
                     :tone="login.active === true ? 'success' : login.active === false ? 'danger' : 'neutral'"
@@ -357,6 +361,7 @@ const statusLabel = (status: string) => (status === "online" ? "Online" : status
       module="network"
       @close="selectedLogin = null"
     >
+      <template #title-badge><LoginTechnologyBadge :technology="selectedLogin.technology" /></template>
       <div class="mb-3 flex flex-wrap items-center gap-2">
         <TechnicalStatus
           :label="statusLabel(selectedLogin.status)"
@@ -368,51 +373,66 @@ const statusLabel = (status: string) => (status === "online" ? "Online" : status
           :checked-at="focusedMonitor.checkedAt.value"
           :message="focusedMonitor.message.value"
         />
-        <span class="text-[10px] text-slate-500">Conexão pelo IP · independente da ONU</span
+        <span class="text-[10px] text-slate-500">Conexão no IXC · independente da ONU</span
         ><button v-if="selectedLogin.ip" type="button" class="button-secondary ml-auto" @click="copy(selectedLogin.ip)">
           <Copy class="h-3.5 w-3.5" aria-hidden="true" />Copiar IP
         </button>
       </div>
-      <LoginSignalCard class="mb-3" module="network" :box-id="boxId" :login-id="selectedLogin.id" />
-      <div class="grid gap-3 lg:grid-cols-2">
-        <ContractFields
-          title="Identificação da conexão"
-          :icon="Network"
-          :fields="[
-            { label: 'IP', value: selectedLogin.ip },
-            { label: 'MAC', value: selectedLogin.mac },
-            { label: 'MAC da ONU', value: selectedLogin.onuMac },
-            { label: 'Concentrador', value: selectedLogin.concentrator },
-            { label: 'Cliente', value: selectedLogin.customerName },
-            { label: 'Contrato', value: selectedLogin.contractName },
-          ]"
-        /><ContractFields
-          title="Histórico recente da conexão"
-          :fields="[
-            { label: 'Última conexão', value: formatIxcDateTime(selectedLogin.lastConnectedAt) },
-            { label: 'Última desconexão', value: formatIxcDateTime(selectedLogin.lastDisconnectedAt) },
-            { label: 'Motivo da desconexão', value: selectedLogin.disconnectReason },
-            { label: 'Sinal do último atendimento', value: selectedLogin.lastServiceSignal },
-          ]"
+      <LoginNetworkTabs :login-id="selectedLogin.id" :scope="{ module: 'network', boxId }">
+        <template #actions
+          ><LoginActions
+            :login-id="selectedLogin.id"
+            :login="selectedLogin.login"
+            :scope="{ module: 'network', boxId }"
+            @completed="reload"
+        /></template>
+        <LoginSignalCard
+          v-if="selectedLogin.technology?.kind !== 'radio'"
+          class="mb-3"
+          module="network"
+          :box-id="boxId"
+          :login-id="selectedLogin.id"
         />
-      </div>
-      <div class="mt-3 flex flex-wrap gap-3">
-        <RecordQuickLink
-          v-if="selectedLogin.contractId"
-          :target="{ kind: 'contract', id: selectedLogin.contractId, module: auth.can('support.contract.view') ? 'support' : 'upgrades' }"
-          :label="`Ver contrato #${selectedLogin.contractId}`"
-        />
-        <RecordQuickLink
-          v-if="selectedLogin.contractId"
-          :target="{ kind: 'login', id: selectedLogin.id, contractId: selectedLogin.contractId }"
-          label="Dados completos do login"
-        />
-        <CustomerQuickLinks
-          v-if="selectedLogin.customerId"
-          :customer-id="selectedLogin.customerId"
-          :contract-id="selectedLogin.contractId ?? undefined"
-        />
-      </div>
+        <div class="grid gap-3 lg:grid-cols-2">
+          <ContractFields
+            title="Identificação da conexão"
+            :icon="Network"
+            :fields="[
+              { label: 'IP', value: selectedLogin.ip },
+              { label: 'MAC', value: selectedLogin.mac },
+              { label: 'MAC da ONU', value: selectedLogin.onuMac },
+              { label: 'Concentrador', value: selectedLogin.concentrator },
+              { label: 'Cliente', value: selectedLogin.customerName },
+              { label: 'Contrato', value: selectedLogin.contractName },
+            ]"
+          /><ContractFields
+            title="Histórico recente da conexão"
+            :fields="[
+              { label: 'Última conexão', value: formatIxcDateTime(selectedLogin.lastConnectedAt) },
+              { label: 'Última desconexão', value: formatIxcDateTime(selectedLogin.lastDisconnectedAt) },
+              { label: 'Motivo da desconexão', value: selectedLogin.disconnectReason },
+              { label: 'Sinal do último atendimento', value: selectedLogin.lastServiceSignal },
+            ]"
+          />
+        </div>
+        <div class="mt-3 flex flex-wrap gap-3">
+          <RecordQuickLink
+            v-if="selectedLogin.contractId"
+            :target="{ kind: 'contract', id: selectedLogin.contractId, module: auth.can('support.contract.view') ? 'support' : 'upgrades' }"
+            :label="`Ver contrato #${selectedLogin.contractId}`"
+          />
+          <RecordQuickLink
+            v-if="selectedLogin.contractId"
+            :target="{ kind: 'login', id: selectedLogin.id, contractId: selectedLogin.contractId }"
+            label="Dados completos do login"
+          />
+          <CustomerQuickLinks
+            v-if="selectedLogin.customerId"
+            :customer-id="selectedLogin.customerId"
+            :contract-id="selectedLogin.contractId ?? undefined"
+          />
+        </div>
+      </LoginNetworkTabs>
     </RecordDetailDialog>
     <NetworkBoxMapDialog v-if="mapOpen && data" :box="data.box" @close="mapOpen = false" />
   </RecordDetailDialog>

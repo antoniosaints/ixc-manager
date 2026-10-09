@@ -4,11 +4,12 @@ import { supportApi } from "../supportApi";
 import { useLiveQuery } from "../composables/useLiveQuery";
 import LoginDetails from "./LoginDetails.vue";
 import LiveQueryState from "./LiveQueryState.vue";
+import type { UpgradeLogin } from "../upgradesApi";
 const props = defineProps<{ contractId: number; loginId: number }>();
-const emit = defineEmits<{ loaded: [login: string] }>();
+const emit = defineEmits<{ loaded: [login: string, technology: UpgradeLogin["technology"]] }>();
 const { data, loading, error, reload } = useLiveQuery((signal) => supportApi.login(String(props.contractId), props.loginId, signal));
 watch(data, (value) => {
-  if (value) emit("loaded", value.login.login ?? "");
+  if (value) emit("loaded", value.login.login ?? "", value.login.technology);
 });
 </script>
 <template>

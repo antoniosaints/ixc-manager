@@ -129,32 +129,13 @@ const recalculate = async () => {
   const current = scope;
   recalculating.value = true;
   actionError.value = "";
-  recalculationMessage.value = "Enfileirando recálculo…";
+  recalculationMessage.value = "Consultando o IXC…";
   try {
-    const result = await api.recalculate(Number(props.id));
+    await loadProfile();
     if (current !== scope) return;
-    toast.info("Recálculo solicitado", "Acompanhe o progresso nesta tela.");
-    if (!auth.can("churn.jobs.view")) {
-      recalculationMessage.value = "Recálculo solicitado. Atualize a página após a conclusão.";
-      return;
-    }
-    for (let attempt = 0; attempt < 180; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, 2_000));
-      if (current !== scope) return;
-      const job = await api.job(result.jobId);
-      if (current !== scope) return;
-      if (job.state === "completed") {
-        await loadProfile();
-        if (current === scope) {
-          recalculationMessage.value = "Score atualizado com os dados disponíveis.";
-          toast.success("Score atualizado");
-        }
-        return;
-      }
-      if (job.state === "failed") throw new Error("Não foi possível recalcular o score. Consulte o andamento em Processos.");
-      recalculationMessage.value = job.state === "waiting" || job.state === "delayed" ? "Aguardando a vez na fila…" : "Recalculando score…";
-    }
-    recalculationMessage.value = "O recálculo continua na fila. Atualize a página após a conclusão.";
+    if (actionError.value || error.value) throw new Error(actionError.value || error.value);
+    recalculationMessage.value = "Análise atualizada diretamente do IXC.";
+    toast.success("Análise atualizada");
   } catch (e) {
     if (current === scope) {
       recalculationMessage.value = readableError(e);
@@ -362,7 +343,7 @@ const eventTone = (type: string) =>
       </div>
       <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
         <p class="text-[11px] text-slate-500">
-          Análise: {{ dateTime(data.customer.calculated_at) }} · Brasília <span v-if="loading">· Atualizando…</span>
+          Consulta ao IXC: {{ dateTime(data.customer.calculated_at) }} · Brasília <span v-if="loading">· Atualizando…</span>
         </p>
         <div class="flex flex-wrap gap-2">
           <button
@@ -453,8 +434,19 @@ const eventTone = (type: string) =>
               :style="{ width: `${Math.min(100, Math.max(0, (item.value / item.max) * 100))}%` }"
             />
           </div>
+          <p v-if="item.label === 'Satisfação'" class="mt-1.5 text-[10px] text-slate-500">
+            {{ data.customer.satisfaction == null ? "Nota não informada no IXC" : `Nota no IXC: ${data.customer.satisfaction}/5` }}
+          </p>
         </article>
       </section>
+      <p
+        v-for="warning in data.warnings ?? []"
+        :key="warning"
+        class="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700"
+        role="status"
+      >
+        {{ warning }}
+      </p>
       <div class="grid items-start gap-3 lg:grid-cols-3">
         <section class="panel overflow-hidden lg:col-span-2">
           <div class="border-b border-slate-100 px-4 py-3">
@@ -561,7 +553,7 @@ const eventTone = (type: string) =>
         <h2 class="text-sm font-bold">
           <Phone class="mr-2 inline h-4 w-4 align-middle" aria-hidden="true" focusable="false" />Canais de contato
         </h2>
-        <p class="mb-3 mt-1 text-[11px] text-slate-500">Números sincronizados do cadastro IXC.</p>
+        <p class="mb-3 mt-1 text-[11px] text-slate-500">Números do cadastro IXC.</p>
         <div v-if="contactChannels.length" class="divide-y divide-slate-100">
           <a
             v-for="contact in contactChannels"

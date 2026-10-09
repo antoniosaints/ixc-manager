@@ -1,6 +1,7 @@
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { db } from "./database.js";
 import type { RiskContext, RiskResult } from "../types/retention.js";
+import { currentRiskLevelSql } from "./riskLevelSql.js";
 
 export interface CustomerRow extends RowDataPacket {
   customer_id: number;
@@ -45,7 +46,7 @@ export class RetentionRepository {
     ];
     const params: unknown[] = [];
     if (filters.riskLevel) {
-      clauses.push("rs.risk_level = ?");
+      clauses.push(`${currentRiskLevelSql} = ?`);
       params.push(filters.riskLevel);
     }
     if (filters.city) {
@@ -94,7 +95,7 @@ export class RetentionRepository {
     const from = `${joins.join(" ")} WHERE ${clauses.join(" AND ")}`;
     const [count] = await db.query<RowDataPacket[]>(`SELECT COUNT(*) total ${from}`, params);
     const [rows] = await db.query<CustomerRow[]>(
-      `SELECT c.id customer_id, c.name, COALESCE(city.label,c.city) city, c.neighborhood, ct.plan_name, ct.branch_id, ct.id contract_id, rs.score, rs.risk_level, rs.financial_score, rs.support_score, rs.network_score, rs.contract_score, rs.satisfaction_score, rs.calculated_at, COALESCE(workflow.status,'OPEN') workflow_status, (attention.contract_id IS NOT NULL) attention_critical ${from} ORDER BY attention.contract_id IS NOT NULL DESC, rs.score DESC, rs.calculated_at DESC LIMIT ? OFFSET ?`,
+      `SELECT c.id customer_id, c.name, COALESCE(city.label,c.city) city, c.neighborhood, ct.plan_name, ct.branch_id, ct.id contract_id, rs.score, ${currentRiskLevelSql} risk_level, rs.financial_score, rs.support_score, rs.network_score, rs.contract_score, rs.satisfaction_score, rs.calculated_at, COALESCE(workflow.status,'OPEN') workflow_status, (attention.contract_id IS NOT NULL) attention_critical ${from} ORDER BY attention.contract_id IS NOT NULL DESC, rs.score DESC, rs.calculated_at DESC LIMIT ? OFFSET ?`,
       [...params, filters.limit, (filters.page - 1) * filters.limit]
     );
     return { items: rows, total: Number(count[0]?.total ?? 0) };
@@ -102,7 +103,7 @@ export class RetentionRepository {
 
   async getSummary() {
     const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT COALESCE(SUM(rs.risk_level = 'LOW'),0) lowRisk, COALESCE(SUM(rs.risk_level = 'ATTENTION'),0) attention, COALESCE(SUM(rs.risk_level = 'MEDIUM'),0) medium, COALESCE(SUM(rs.risk_level = 'HIGH'),0) highRisk, COUNT(DISTINCT CASE WHEN rs.risk_level = 'CRITICAL' OR attention.contract_id IS NOT NULL THEN c.id END) critical, MAX(rs.calculated_at) riskCalculatedAt FROM retention_customers c JOIN retention_contracts ct ON ct.customer_id=c.id AND ct.status <> 'I' JOIN retention_risk_scores rs ON rs.id=(SELECT id FROM retention_risk_scores x WHERE x.contract_id=ct.id ORDER BY calculated_at DESC,id DESC LIMIT 1) LEFT JOIN retention_contract_attention attention ON attention.contract_id=ct.id WHERE c.active='S'`
+      `SELECT COALESCE(SUM(${currentRiskLevelSql} = 'LOW'),0) lowRisk, COALESCE(SUM(${currentRiskLevelSql} = 'ATTENTION'),0) attention, COALESCE(SUM(${currentRiskLevelSql} = 'MEDIUM'),0) medium, COALESCE(SUM(${currentRiskLevelSql} = 'HIGH'),0) highRisk, COUNT(DISTINCT CASE WHEN ${currentRiskLevelSql} = 'CRITICAL' OR attention.contract_id IS NOT NULL THEN c.id END) critical, MAX(rs.calculated_at) riskCalculatedAt FROM retention_customers c JOIN retention_contracts ct ON ct.customer_id=c.id AND ct.status <> 'I' JOIN retention_risk_scores rs ON rs.id=(SELECT id FROM retention_risk_scores x WHERE x.contract_id=ct.id ORDER BY calculated_at DESC,id DESC LIMIT 1) LEFT JOIN retention_contract_attention attention ON attention.contract_id=ct.id WHERE c.active='S'`
     );
     return rows[0];
   }

@@ -1,6 +1,19 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Network, KeyRound, Router, Copy, ArrowUpRight, Cable, Wifi, Clock3, MapPin, Settings2, Info } from "lucide-vue-next";
+import {
+  Network,
+  KeyRound,
+  Router,
+  Copy,
+  ArrowUpRight,
+  Cable,
+  Wifi,
+  Clock3,
+  MapPin,
+  Settings2,
+  Info,
+  ChartNoAxesCombined,
+} from "lucide-vue-next";
 import { useAuthStore } from "../stores/auth";
 import { toast } from "../notifications/toast";
 import { type UpgradeLogin, type LoginSecretField, formatIxcDateTime } from "../upgradesApi";
@@ -11,6 +24,8 @@ import LoginAccessMenu from "./LoginAccessMenu.vue";
 import RecordQuickLink from "./RecordQuickLink.vue";
 import CustomerQuickLinks from "./CustomerQuickLinks.vue";
 import TechnicalStatus from "./TechnicalStatus.vue";
+import LoginActions from "./LoginActions.vue";
+import LoginConsumption from "./LoginConsumption.vue";
 import LoginSignalCard from "./LoginSignalCard.vue";
 import NetworkMonitorStatus from "./NetworkMonitorStatus.vue";
 import { useNetworkMonitor, applyConnectionUpdate, type ConnectionUpdate } from "../composables/useNetworkMonitor";
@@ -33,9 +48,13 @@ const monitor = useNetworkMonitor({
     if (update) liveConnection.value = update;
   },
 });
-const tab = ref<"overview" | "credentials" | "equipment">(props.initialTab);
+const tab = ref<"overview" | "credentials" | "equipment" | "consumption">(props.initialTab);
 const can = (permission: string) =>
   !!props.login.contractId && auth.can(`${props.module}.contract.view`) && auth.can(`${props.module}.${permission}`);
+const toolScope = computed(() => ({
+  module: props.module,
+  ...(Number(props.contractId) > 0 ? { contractId: Number(props.contractId) } : {}),
+}));
 const tabs = [
   { id: "overview", label: "Conexão", icon: Network, help: "Estado da sessão e identificação do acesso à internet." },
   {
@@ -45,6 +64,7 @@ const tabs = [
     help: "Usuário do roteador, redes sem fio e senhas separadas por finalidade.",
   },
   { id: "equipment", label: "Fibra e rede", icon: Cable, help: "Equipamento cadastrado, ponto de fibra e parâmetros de rede." },
+  { id: "consumption", label: "Consumo", icon: ChartNoAxesCombined, help: "Histórico diário e mensal de download e upload deste login." },
 ] as const;
 const idLabel = (v: number | null) => (v ? `#${v}` : null);
 const yesNo = (v: boolean | null) => (v === null ? "Não informado" : v ? "Sim" : "Não");
@@ -112,7 +132,7 @@ function keyboard(e: KeyboardEvent) {
     </div>
     <div class="login-connection-summary">
       <div class="min-w-0">
-        <span class="support-case-caption">Conexão pelo IP no IXC</span>
+        <span class="support-case-caption">Conexão informada pelo IXC</span>
         <TechnicalStatus
           :label="loginStatus(login.status)"
           :tone="login.status === 'online' ? 'success' : login.status === 'offline' ? 'danger' : 'neutral'"
@@ -132,31 +152,34 @@ function keyboard(e: KeyboardEvent) {
     </div>
     <div class="mb-3 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
       <NetworkMonitorStatus :state="monitor.state.value" :checked-at="monitor.checkedAt.value" :message="monitor.message.value" />
-      <span>Com IP: online. Sem IP: offline. A potência óptica é consultada separadamente.</span>
+      <span>O status de conexão do IXC tem prioridade sobre o IP cadastrado. A potência óptica é consultada separadamente.</span>
     </div>
-    <div class="mb-3 overflow-x-auto">
-      <div class="support-case-tabs w-fit min-w-max" role="tablist" :aria-label="`Informações do login ${login.id}`" @keydown="keyboard">
-        <button
-          v-for="item in tabs"
-          :id="`login-${module}-${login.id}-${item.id}`"
-          :key="item.id"
-          role="tab"
-          type="button"
-          :aria-selected="tab === item.id"
-          :aria-controls="`login-panel-${module}-${login.id}`"
-          :tabindex="tab === item.id ? 0 : -1"
-          @click="tab = item.id"
-        >
-          <component :is="item.icon" class="h-3.5 w-3.5" aria-hidden="true" />{{ item.label }}
-        </button>
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="max-w-full overflow-x-auto">
+        <div class="support-case-tabs w-fit min-w-max" role="tablist" :aria-label="`Informações do login ${login.id}`" @keydown="keyboard">
+          <button
+            v-for="item in tabs"
+            :id="`login-${module}-${login.id}-${item.id}`"
+            :key="item.id"
+            role="tab"
+            type="button"
+            :aria-selected="tab === item.id"
+            :aria-controls="`login-panel-${module}-${login.id}`"
+            :tabindex="tab === item.id ? 0 : -1"
+            @click="tab = item.id"
+          >
+            <component :is="item.icon" class="h-3.5 w-3.5" aria-hidden="true" />{{ item.label }}
+          </button>
+        </div>
       </div>
+      <div class="ml-auto"><LoginActions :login-id="login.id" :login="login.login" :scope="toolScope" /></div>
     </div>
     <div :id="`login-panel-${module}-${login.id}`" role="tabpanel" :aria-labelledby="`login-${module}-${login.id}-${tab}`" tabindex="0">
       <p class="mb-3 text-[11px] text-slate-500">{{ tabs.find((item) => item.id === tab)?.help }}</p>
       <div class="grid min-w-0 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div class="min-w-0 space-y-3">
           <LoginSignalCard
-            v-if="tab !== 'credentials' && can('logins.view')"
+            v-if="login.technology?.kind !== 'radio' && (tab === 'overview' || tab === 'equipment') && can('logins.view')"
             :module="module"
             :login-id="login.id"
             :contract-id="contractId"
@@ -263,6 +286,9 @@ function keyboard(e: KeyboardEvent) {
             <p v-if="can('credentials.view')" class="text-[10px] text-slate-500">
               Revele ou copie apenas a senha necessária. As senhas reveladas são ocultadas ao trocar de aba ou fechar o login.
             </p>
+          </template>
+          <template v-else-if="tab === 'consumption'">
+            <LoginConsumption :login-id="login.id" :scope="toolScope" />
           </template>
           <template v-else>
             <div class="grid gap-3 xl:grid-cols-2">

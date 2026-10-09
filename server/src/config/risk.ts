@@ -37,10 +37,18 @@ export const riskConfig = {
 
 export const riskLevels = ["LOW", "ATTENTION", "MEDIUM", "HIGH", "CRITICAL"] as const;
 export type RiskLevel = (typeof riskLevels)[number];
-export function getRiskLevel(score: number): RiskLevel {
-  if (score >= 85) return "CRITICAL";
-  if (score >= 70) return "HIGH";
-  if (score >= 50) return "MEDIUM";
-  if (score >= 30) return "ATTENTION";
+export const riskThresholds = { attention: 30, medium: 50, high: 60, critical: 85 } as const;
+export interface RiskThresholds {
+  low: 0;
+  attention: number;
+  medium: number;
+  high: number;
+  critical: number;
+}
+export function getRiskLevel(score: number, thresholds: Omit<RiskThresholds, "low"> = riskThresholds): RiskLevel {
+  if (score >= thresholds.critical) return "CRITICAL";
+  if (score >= thresholds.high) return "HIGH";
+  if (score >= thresholds.medium) return "MEDIUM";
+  if (score >= thresholds.attention) return "ATTENTION";
   return "LOW";
 }

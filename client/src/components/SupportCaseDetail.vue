@@ -14,6 +14,7 @@ import {
   ClipboardCheck,
   CircleAlert,
   Building2,
+  Paperclip,
 } from "lucide-vue-next";
 import { supportApi } from "../supportApi";
 import { formatIxcDateTime, formatConsulted } from "../upgradesApi";
@@ -23,16 +24,26 @@ import SupportCaseHistory from "./SupportCaseHistory.vue";
 import RecordQuickLink from "./RecordQuickLink.vue";
 import CustomerQuickLinks from "./CustomerQuickLinks.vue";
 import SupportCaseStatus from "./SupportCaseStatus.vue";
+import SupportOrderFiles from "./SupportOrderFiles.vue";
 const props = defineProps<{ customerId: string; kind: "orders" | "tickets"; caseId: number }>();
-const tab = ref<"overview" | "messages" | "movements">("overview");
-const tabs = [
-  { id: "overview", label: "Visão geral", icon: Info },
-  { id: "messages", label: "Mensagens", icon: MessageSquareText },
-  { id: "movements", label: "Movimentações", icon: History },
-] as const;
+const tab = ref<"overview" | "messages" | "movements" | "files">("overview");
+const tabs = computed(
+  () =>
+    [
+      { id: "overview", label: "Visão geral", icon: Info },
+      { id: "messages", label: "Mensagens", icon: MessageSquareText },
+      { id: "movements", label: "Movimentações", icon: History },
+      ...(props.kind === "orders" ? [{ id: "files" as const, label: "Arquivos", icon: Paperclip }] : []),
+    ] as const
+);
 const { data, loading, error, reload } = useLiveQuery((signal) =>
   supportApi.caseDetail(props.customerId, props.kind, props.caseId, signal)
 );
+const files = ref<InstanceType<typeof SupportOrderFiles>>();
+function refreshRecord() {
+  if (tab.value === "files") return files.value?.reload();
+  return reload();
+}
 const record = computed(() => data.value?.record);
 const priority = (s: string | null) =>
   s ? (({ B: "Baixa", N: "Normal", M: "Média", A: "Alta", C: "Crítica" } as Record<string, string>)[s] ?? s) : "Não informada";
@@ -40,8 +51,9 @@ const chronologicalStages = computed(() => [...(record.value?.stages ?? [])].sor
 function keyboard(e: KeyboardEvent) {
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
   e.preventDefault();
-  const i = tabs.findIndex((t) => t.id === tab.value);
-  tab.value = tabs[e.key === "Home" ? 0 : e.key === "End" ? 2 : (i + (e.key === "ArrowRight" ? 1 : -1) + 3) % 3]!.id;
+  const i = tabs.value.findIndex((t) => t.id === tab.value),
+    count = tabs.value.length;
+  tab.value = tabs.value[e.key === "Home" ? 0 : e.key === "End" ? count - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + count) % count]!.id;
   (e.currentTarget as HTMLElement).querySelector<HTMLButtonElement>(`#case-${props.kind}-${props.caseId}-${tab.value}`)?.focus();
 }
 </script>
@@ -86,7 +98,7 @@ function keyboard(e: KeyboardEvent) {
           <component :is="item.icon" class="h-3.5 w-3.5" aria-hidden="true" />{{ item.label }}
         </button>
       </div>
-      <button type="button" class="button-secondary" :disabled="loading" @click="reload">
+      <button type="button" class="button-secondary" :disabled="loading" @click="refreshRecord">
         <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" />Atualizar registro
       </button>
     </div>
@@ -193,8 +205,9 @@ function keyboard(e: KeyboardEvent) {
           </aside>
         </div>
       </template>
+      <SupportOrderFiles v-else-if="tab === 'files' && kind === 'orders'" ref="files" :customer-id="customerId" :case-id="caseId" />
       <SupportCaseHistory
-        v-else-if="tab !== 'overview'"
+        v-else-if="tab === 'messages' || tab === 'movements'"
         :key="tab"
         :customer-id="customerId"
         :kind="kind"
@@ -202,7 +215,7 @@ function keyboard(e: KeyboardEvent) {
         :section="tab"
       />
     </div>
-    <p v-if="data" class="mt-3 text-[10px] text-slate-500">
+    <p v-if="data && tab !== 'files'" class="mt-3 text-[10px] text-slate-500">
       Consulta direta ao banco IXC · {{ formatConsulted(data.queriedAt) }} · Brasília
     </p>
   </div>

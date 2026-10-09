@@ -3,9 +3,14 @@ import { z } from "zod";
 import { AuthService } from "../services/AuthService.js";
 import { SettingsService } from "../services/settings/SettingsService.js";
 
+import { AnalyticsSettingsService } from "../services/settings/AnalyticsSettingsService.js";
+import { churnSettings } from "../services/settings/ChurnSettingsService.js";
+
 export async function settingsRoutes(app: FastifyInstance) {
   const auth = new AuthService(),
-    service = new SettingsService();
+    service = new SettingsService(),
+    analytics = new AnalyticsSettingsService();
+  app.addHook("onClose", () => analytics.close());
   app.addHook("onRequest", async (_request, reply) => {
     reply.header("Cache-Control", "no-store");
   });
@@ -24,6 +29,22 @@ export async function settingsRoutes(app: FastifyInstance) {
   app.put("/appearance", { bodyLimit: 1_048_576, logLevel: "silent" }, async (request) => {
     const user = await auth.requireUser(request, ["ADMIN"]);
     return service.saveAppearance(request.body, user.id);
+  });
+  app.get("/analytics", { logLevel: "silent" }, async (request) => {
+    await auth.requireUser(request, ["ADMIN"]);
+    return analytics.get();
+  });
+  app.get("/churn", { logLevel: "silent" }, async (request) => {
+    await auth.requireUser(request, ["ADMIN"]);
+    return churnSettings.get();
+  });
+  app.put("/churn", { logLevel: "silent", bodyLimit: 4096 }, async (request) => {
+    const user = await auth.requireUser(request, ["ADMIN"]);
+    return churnSettings.save(request.body, user.id);
+  });
+  app.put("/analytics", { logLevel: "silent", bodyLimit: 16384 }, async (request) => {
+    const user = await auth.requireUser(request, ["ADMIN"]);
+    return analytics.save(request.body, user.id);
   });
   app.get("/access", async (request) => {
     await auth.requireUser(request, ["ADMIN"]);

@@ -112,11 +112,11 @@ describe("Detalhes de Upgrades", () => {
     for (const protocol of ["", "javascript", "ftp", "http://user:pass@"])
       expect(equipmentTarget("Roteador", "192.0.2.1", 80, protocol).url).toBeNull();
   });
-  it("retorna metadados explícitos, define conexão pelo IP e não mistura as senhas", () => {
+  it("retorna metadados explícitos, respeita a conexão do IXC e não mistura as senhas", () => {
     const details = loginDetails(login, false);
     expect(details).toMatchObject({
       active: false,
-      status: "online",
+      status: "offline",
       authentication: "PPPoE",
       routerUsername: "admin",
       wifi24Ssid: "Wi-Fi teste",
@@ -126,8 +126,8 @@ describe("Detalhes de Upgrades", () => {
     for (const forbidden of ["SENHA_FICTICIA", "ROTEADOR_FICTICIO", "HASH_NUNCA_EXPOSTO", "NUNCA_EXPOSTO", "senha_md5", "campo_privado"])
       expect(JSON.stringify(details)).not.toContain(forbidden);
     expect(loginDetails({ ...login, online: "S" }, true).status).toBe("online");
-    expect(loginDetails({ ...login, online: "N" }, true).status).toBe("online");
-    expect(loginDetails({ ...login, online: "S", ip: null }, true).status).toBe("offline");
+    expect(loginDetails({ ...login, online: "N" }, true).status).toBe("offline");
+    expect(loginDetails({ ...login, online: "S", ip: null }, true).status).toBe("online");
     expect(loginDetails(login, true).accessTargets).toHaveLength(3);
   });
   it("pagina ativos e inativos somente dentro do contrato e cliente, e relê o IXC a cada chamada", async () => {

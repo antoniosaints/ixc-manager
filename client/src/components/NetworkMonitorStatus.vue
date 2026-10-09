@@ -22,7 +22,7 @@ const label = computed(() => labels[props.state]);
     :title="
       message ||
       (checkedAt
-        ? `Última verificação: ${formatConsulted(checkedAt)} (Brasília). Conexão pelo IP, consultada a cada 1 segundo na aba ou modal em foco.`
+        ? `Última verificação: ${formatConsulted(checkedAt)} (Brasília). Conexão informada pelo IXC, consultada a cada 1 segundo na aba ou modal em foco.`
         : 'Conectando ao acompanhamento de conexões.')
     "
   >

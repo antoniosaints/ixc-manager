@@ -6,6 +6,7 @@ import FinanceView from "./views/FinanceView.vue";
 import CollectionsView from "./views/CollectionsView.vue";
 import DashboardView from "./views/DashboardView.vue";
 import CustomerView from "./views/CustomerView.vue";
+import ProviderAnalyticsView from "./views/ProviderAnalyticsView.vue";
 import AnalyticsView from "./views/AnalyticsView.vue";
 import SyncView from "./views/SyncView.vue";
 import LoginView from "./views/LoginView.vue";
@@ -15,16 +16,20 @@ import WorkQueueView from "./views/WorkQueueView.vue";
 import UpgradesView from "./views/UpgradesView.vue";
 import UpgradeContractView from "./views/UpgradeContractView.vue";
 import UpgradePlansView from "./views/UpgradePlansView.vue";
+import AnalyticsSettingsView from "./views/AnalyticsSettingsView.vue";
+import ChurnSettingsView from "./views/ChurnSettingsView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import AppearanceView from "./views/AppearanceView.vue";
 import PermissionProfilesView from "./views/PermissionProfilesView.vue";
 import SupportView from "./views/SupportView.vue";
+import SupportOrdersView from "./views/SupportOrdersView.vue";
 import SupportCustomerView from "./views/SupportCustomerView.vue";
 import NoAccessView from "./views/NoAccessView.vue";
 import { useAuthStore } from "./stores/auth";
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: "/overview", component: ProviderAnalyticsView, meta: { module: "analytics", permission: "analytics.dashboard.view" } },
     { path: "/network", component: NetworkView, meta: { module: "network", permission: "network.boxes.view" } },
     { path: "/network/onus", component: NetworkOnusView, meta: { module: "network", permission: "network.onus.view" } },
     { path: "/network/logins", component: NetworkLoginsView, meta: { module: "network", permission: "network.logins.list" } },
@@ -36,6 +41,7 @@ const router = createRouter({
       meta: { module: "finance", financeView: "list", permission: "finance.dashboard.view" },
     },
     { path: "/support", component: SupportView, meta: { module: "support", permission: "support.customers.view" } },
+    { path: "/support/orders", component: SupportOrdersView, meta: { module: "support", permission: "support.orders.view" } },
     { path: "/support/customers/:id", component: SupportCustomerView, meta: { module: "support", permission: "support.customer.view" } },
     { path: "/support/contracts/:id", component: UpgradeContractView, meta: { module: "support", permission: "support.contract.view" } },
     { path: "/upgrades", component: UpgradesView, meta: { module: "upgrades", permission: "upgrades.opportunities.view" } },
@@ -54,6 +60,8 @@ const router = createRouter({
       children: [
         { path: "", redirect: "/settings/appearance" },
         { path: "appearance", component: AppearanceView },
+        { path: "analytics", component: AnalyticsSettingsView },
+        { path: "churn", component: ChurnSettingsView },
         { path: "users", component: UsersView },
         { path: "profiles", component: PermissionProfilesView },
       ],

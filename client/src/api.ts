@@ -11,7 +11,8 @@ export interface RetentionSummary {
   critical: number | null;
   operationalSource: "database" | "synchronized" | "unavailable";
   operationalQueriedAt: string | null;
-  riskSource: "synchronized" | "unavailable";
+  riskSource: "database" | "synchronized" | "unavailable";
+  satisfactionCoverage?: { rated: number; total: number; missing: number };
   riskCalculatedAt: string | null;
   referenceDate: string;
   warnings: string[];
@@ -105,7 +106,10 @@ export interface AuthUser {
 }
 export const api = {
   summary: () => request<RetentionSummary>("/summary", { cache: "no-store" }),
-  customers: (params: URLSearchParams) => request<{ items: Customer[]; total: number }>(`/customers?${params}`),
+  customers: (params: URLSearchParams, signal?: AbortSignal) =>
+    request<{ items: Customer[]; total: number; snapshotId?: string; queriedAt?: string; reuseUntil?: string }>(`/customers?${params}`, {
+      signal,
+    }),
   customer: (id: number, contractId?: number, signal?: AbortSignal) =>
     request<any>(`/customers/${id}${contractId ? `?contractId=${contractId}` : ""}`, { signal }),
   customerPdf: async (id: number, contractId: number, signal?: AbortSignal): Promise<Blob> => {
@@ -139,10 +143,11 @@ export const api = {
       body: JSON.stringify({ contractId, critical }),
     }),
   timeline: (id: number, signal?: AbortSignal) => request<{ events: any[] }>(`/customers/${id}/timeline`, { signal }),
-  analytics: (dimension: string) => request<{ items: any[] }>(`/analytics/${dimension}`),
-  recalculate: (id?: number) => request<SyncEnqueueResult>(id ? `/customers/${id}/recalculate` : `/recalculate`, { method: "POST" }),
+  analytics: (dimension: string, signal?: AbortSignal) => request<{ items: any[] }>(`/analytics/${dimension}`, { signal }),
+  recalculate: (id?: number) =>
+    request<{ status: "completed"; source: "database" }>(id ? `/customers/${id}/recalculate` : `/recalculate`, { method: "POST" }),
   job: (id: string) => request<RecalculationJob>(`/jobs/${id}`),
-  sync: () => request<SyncEnqueueResult>("/sync", { method: "POST" }),
+  sync: () => request<{ status: "completed"; source: "database" }>("/sync", { method: "POST" }),
   syncStatus: (signal?: AbortSignal) => request<SyncStatus>("/sync/status", { signal }),
   setupStatus: () => authRequest<{ needsSetup: boolean }>("/setup-status"),
   login: (email: string, password: string) =>

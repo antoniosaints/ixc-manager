@@ -6,12 +6,12 @@ import { useAuthStore } from "../../client/src/stores/auth.js";
 import { registerRecordDialog } from "../../client/src/composables/recordDialog.js";
 afterEach(() => vi.unstubAllGlobals());
 describe("Monitor no navegador: aba e modal em foco", () => {
-  it("atualiza IP e badge sem afetar os dados da ONU ou outro login", () => {
+  it("atualiza badge para offline com IP retido sem afetar ONU ou outro login", () => {
     const login = { id: 1, ip: "192.0.2.1", status: "online", ftthBoxId: 25, ftthPort: "13", onuMac: "DEMO" };
-    const update = { id: 1, boxId: 0, active: "S", online: "N", ip: null, port: 0 };
+    const update = { id: 1, boxId: 0, active: "S", online: "N", ip: "192.0.2.1", port: 0 };
     expect(applyConnectionUpdate(login, update)).toMatchObject({
       id: 1,
-      ip: null,
+      ip: "192.0.2.1",
       status: "offline",
       ftthBoxId: 25,
       ftthPort: "13",

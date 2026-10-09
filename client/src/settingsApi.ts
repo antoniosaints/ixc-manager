@@ -21,6 +21,25 @@ export interface Appearance {
   light: Palette;
   dark: Palette;
 }
+export interface ActivationSettings {
+  source: "contracts" | "serviceOrders";
+  subjectIds: number[];
+}
+export interface ChurnSettings {
+  low: 0;
+  attention: number;
+  medium: number;
+  high: number;
+  critical: number;
+}
+export interface ChurnSettingsResponse {
+  configuration: ChurnSettings;
+  defaults: ChurnSettings;
+}
+export interface AnalyticsSettingsResponse {
+  configuration: ActivationSettings;
+  subjects: { id: number; name: string }[];
+}
 export interface AccessProfile {
   id: number;
   name: string;
@@ -81,6 +100,10 @@ async function request<T>(path: string, method = "GET", body?: unknown): Promise
   return response.json();
 }
 export const settingsApi = {
+  churn: () => request<ChurnSettingsResponse>("/churn"),
+  saveChurn: (value: ChurnSettings) => request<ChurnSettings>("/churn", "PUT", value),
+  analytics: () => request<AnalyticsSettingsResponse>("/analytics"),
+  saveAnalytics: (value: ActivationSettings) => request<ActivationSettings>("/analytics", "PUT", value),
   appearance: () => request<Appearance>("/appearance"),
   saveAppearance: (value: Appearance) => request<Appearance>("/appearance", "PUT", value),
   access: () => request<AccessCatalog>("/access"),

@@ -11,6 +11,7 @@ vi.mock("../src/queues/retentionQueue.js", () => ({
 import { retentionRoutes } from "../src/controllers/retentionController.js";
 import { AuthService } from "../src/services/AuthService.js";
 import { db } from "../src/repositories/database.js";
+import { directRetention } from "../src/services/retention/DirectRetentionService.js";
 import { createCustomerRiskPdf, type CustomerRiskReport } from "../src/services/retention/CustomerRiskPdf.js";
 const report: CustomerRiskReport = {
   customer: {
@@ -60,10 +61,7 @@ it("exige leitura e exportação antes de consultar qualquer dado", async () => 
   expect(query).not.toHaveBeenCalled();
 });
 it("exporta o contrato selecionado, com fatores do mesmo score, sem cache", async () => {
-  const query = vi
-    .spyOn(db, "query")
-    .mockResolvedValueOnce([[{ ...report.customer, risk_score_id: 77 }], []] as any)
-    .mockResolvedValueOnce([report.reasons, []] as any);
+  const query = vi.spyOn(directRetention, "getSnapshot").mockResolvedValue(report as any);
   const app = await appWith(["churn.customer.view", "churn.customer.export"]);
   try {
     const response = await app.inject({ url: "/api/retention/customers/6001/pdf?contractId=14001" });
@@ -71,10 +69,8 @@ it("exporta o contrato selecionado, com fatores do mesmo score, sem cache", asyn
     expect(response.headers["content-type"]).toBe("application/pdf");
     expect(response.headers["cache-control"]).toBe("no-store");
     expect(response.headers["content-disposition"]).toContain("churn-cliente-6001-contrato-14001.pdf");
-    expect(query.mock.calls[0]![0]).toContain("AND ct.id=?");
-    expect(query.mock.calls[0]![1]).toEqual([6001, 14001]);
-    expect(query.mock.calls[1]![1]).toEqual([77]);
-    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenCalledWith(6001, 14001, expect.any(AbortSignal));
+    expect(query).toHaveBeenCalledOnce();
     expect((await PDFDocument.load(response.rawPayload)).getPageCount()).toBe(1);
   } finally {
     await app.close();
@@ -82,8 +78,8 @@ it("exporta o contrato selecionado, com fatores do mesmo score, sem cache", asyn
 });
 it("retorna 404 para contrato de outro cliente e não expõe erros internos", async () => {
   const query = vi
-    .spyOn(db, "query")
-    .mockResolvedValueOnce([[], []] as any)
+    .spyOn(directRetention, "getSnapshot")
+    .mockResolvedValueOnce(null)
     .mockRejectedValueOnce(new Error("Dados internos que não devem sair"));
   const app = await appWith(["churn.customer.view", "churn.customer.export"]);
   try {

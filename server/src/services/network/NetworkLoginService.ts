@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { IxcReadDatabase, type IxcReadQuery } from "../../integrations/ixc/database/IxcReadDatabase.js";
 import { networkLoginDto } from "./NetworkService.js";
-import { connectedIpSql } from "./LoginConnection.js";
+import { connectedLoginSql } from "./LoginConnection.js";
 import { compatibleOnuSql } from "../upgrades/LoginOnuLink.js";
 
 const id = z.coerce.number().int().positive().safe();
@@ -14,6 +14,7 @@ export const loginListQuery = z
       .default(10),
     registration: z.enum(["active", "inactive", "all"]).default("active"),
     connection: z.enum(["online", "offline", "all"]).default("all"),
+    access: z.enum(["all", "released"]).default("all"),
     searchBy: z.enum(["login", "box", "document", "customer", "contractId", "loginId", "city", "branch"]).default("login"),
     search: z.string().trim().max(120).default(""),
     cityId: id.optional(),
@@ -52,7 +53,8 @@ function where(q: Query) {
     sql += " AND r.ativo=?";
     params.push(q.registration === "active" ? "S" : "N");
   }
-  if (q.connection !== "all") sql += ` AND ${q.connection === "online" ? connectedIpSql : `NOT (${connectedIpSql})`}`;
+  if (q.connection !== "all") sql += ` AND ${q.connection === "online" ? connectedLoginSql : `NOT (${connectedLoginSql})`}`;
+  if (q.access === "released") sql += " AND c.ativo='S' AND ct.status='A' AND ct.status_internet='A'";
   if (q.cityId) {
     sql += " AND city.id=?";
     params.push(q.cityId);
@@ -92,14 +94,14 @@ export function loginListSql(q: Query) {
       name: "network-direct-login-summary",
       sql: `SELECT COUNT(*) total,
       COALESCE(SUM(r.ativo='S'),0) activeLogins,COALESCE(SUM(r.ativo='N'),0) inactiveLogins,
-      COALESCE(SUM(${connectedIpSql}),0) onlineLogins,COALESCE(SUM(NOT (${connectedIpSql})),0) offlineLogins
+      COALESCE(SUM(${connectedLoginSql}),0) onlineLogins,COALESCE(SUM(NOT (${connectedLoginSql})),0) offlineLogins
       ${base}${q.search && q.searchBy === "box" ? boxJoin : ""} ${filter.sql}`,
       params: filter.params,
       timeoutSeconds: 5,
     },
     list: {
       name: "network-direct-login-list",
-      sql: `SELECT r.id,r.login,r.ativo,r.ip,r.mac,r.onu_mac,r.id_cliente,r.id_contrato,
+      sql: `SELECT r.id,r.login,r.tipo_conexao_mapa,r.ativo,r.online,r.ip,r.mac,r.onu_mac,r.id_cliente,r.id_contrato,
       ${port} ftth_porta,r.ultima_conexao_inicial,r.ultima_conexao_final,r.motivo_desconexao,r.sinal_ultimo_atendimento,r.concentrador,
       c.razao customerName,c.ativo customerActive,c.cnpj_cpf customerDocument,
       ct.id validContractId,ct.contrato contractName,ct.status contractStatus,

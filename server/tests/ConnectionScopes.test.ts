@@ -4,7 +4,7 @@ import websocket from "@fastify/websocket";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { connectionSubscription, connectionPermissions, type ConnectionScope } from "../src/services/network/ConnectionMonitorScope.js";
 import { connectionMonitorSql } from "../src/services/network/NetworkMonitor.js";
-import { connectionIp, connectionStatus } from "../src/services/network/LoginConnection.js";
+import { connectedLoginSql, connectionIp, connectionStatus } from "../src/services/network/LoginConnection.js";
 import { loginDetails } from "../src/services/upgrades/UpgradeDetails.js";
 import { IxcReadDatabase, assertReadQuery } from "../src/integrations/ixc/database/IxcReadDatabase.js";
 import { networkRoutes } from "../src/controllers/networkController.js";
@@ -19,16 +19,37 @@ function fixture() {
  (3,4,11,25,'S','N','192.0.2.3',3),(4,3,11,25,'S','S','0.0.0.0',4),(5,3,0,0,'S','SS','2001:db8::1',0);`);
   return db;
 }
-describe("Conexões por IP, com escopo de cliente e login", () => {
-  it("classifica IP vazio/placeholder como offline e IPv4/IPv6 preenchidos como online, independente da ONU e do campo online", () => {
-    for (const ip of [null, undefined, "", " ", "0", "0.0.0.0", "::", "::0"]) {
-      expect(connectionIp(ip)).toBeNull();
-      expect(connectionStatus(ip)).toBe("offline");
-      expect(loginDetails({ id: 1, ip, online: "S" }, false).status).toBe("offline");
-    }
-    for (const ip of ["192.0.2.1", " 2001:db8::1 "]) {
-      expect(connectionStatus(ip)).toBe("online");
-      expect(loginDetails({ id: 1, ip, online: "N" }, false).status).toBe("online");
+describe("Conexões do IXC, com escopo de cliente e login", () => {
+  it("prioriza o estado IXC mesmo com IP retido, sem depender de ONU, com fallback apenas para estado desconhecido", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE radusuarios(ip TEXT,online TEXT)");
+    try {
+      for (const [online, ip, expected] of [
+        ["N", "192.0.2.1", "offline"],
+        [" N ", "2001:db8::1", "offline"],
+        ["SS", "192.0.2.1", "offline"],
+        ["S", null, "online"],
+        ["S", "0.0.0.0", "online"],
+        ["s", "192.0.2.1", "online"],
+        [null, "192.0.2.1", "online"],
+        ["", "2001:db8::1", "online"],
+        ["I", null, "offline"],
+        [null, "0", "offline"],
+        [null, "0.0.0.0", "offline"],
+        [null, "::", "offline"],
+        [null, "::0", "offline"],
+        [null, " ", "offline"],
+      ] as const) {
+        db.exec("DELETE FROM radusuarios");
+        db.prepare("INSERT INTO radusuarios VALUES(?,?)").run(ip, online);
+        expect(connectionStatus(ip, online)).toBe(expected);
+        expect(loginDetails({ id: 1, ip, online }, false).status).toBe(expected);
+        const sql = db.prepare(`SELECT ${connectedLoginSql} connected FROM radusuarios r`).get();
+        expect(sql?.connected).toBe(expected === "online" ? 1 : 0);
+      }
+      for (const ip of [null, undefined, "", " ", "0", "0.0.0.0", "::", "::0"]) expect(connectionIp(ip)).toBeNull();
+    } finally {
+      db.close();
     }
   });
   it("consulta somente IDs visíveis do cliente e login/contrato ou login/caixa autorizados, mesmo sem ONU ou caixa", () => {
@@ -42,12 +63,12 @@ describe("Conexões por IP, com escopo de cliente e login", () => {
     try {
       expect(read({ scope: "customer", module: "support", customerId: 3, loginIds: [1, 2, 3, 5] }).map((r) => r.id)).toEqual([1, 2, 5]);
       expect(read({ scope: "login", module: "support", loginId: 1, contractId: 10 })).toMatchObject([
-        { id: 1, online: "S", ip: "192.0.2.1", boxId: 0 },
+        { id: 1, online: "N", ip: "192.0.2.1", boxId: 0 },
       ]);
       expect(read({ scope: "login", module: "support", loginId: 1, contractId: 11 })).toEqual([]);
       expect(read({ scope: "login", module: "support", loginId: 4, contractId: 11 })).toEqual([]);
       expect(read({ scope: "box-login", loginId: 1, boxId: 25 })).toEqual([]);
-      expect(read({ scope: "box-login", loginId: 2, boxId: 25 })).toMatchObject([{ id: 2, online: "N", ip: null }]);
+      expect(read({ scope: "box-login", loginId: 2, boxId: 25 })).toMatchObject([{ id: 2, online: "S", ip: null }]);
     } finally {
       db.close();
     }

@@ -9,7 +9,7 @@ vi.mock("../src/queues/retentionQueue.js", () => ({
 }));
 import { retentionRoutes } from "../src/controllers/retentionController.js";
 import { AuthService } from "../src/services/AuthService.js";
-import { RetentionRepository } from "../src/repositories/RetentionRepository.js";
+import { DirectRetentionService } from "../src/services/retention/DirectRetentionService.js";
 import { db } from "../src/repositories/database.js";
 import { enqueueFullSync, retentionQueue } from "../src/queues/retentionQueue.js";
 import { IxcReadDatabase } from "../src/integrations/ixc/database/IxcReadDatabase.js";
@@ -25,7 +25,7 @@ it("nega todas as ações de Churn sem permissão antes de acessar dados ou fila
   });
   const query = vi.spyOn(db, "query"),
     execute = vi.spyOn(db, "execute"),
-    summary = vi.spyOn(RetentionRepository.prototype, "getSummary"),
+    summary = vi.spyOn(DirectRetentionService.prototype, "getSummary"),
     ixc = vi.spyOn(IxcReadDatabase.prototype, "select");
   const app = Fastify();
   await app.register(retentionRoutes, { prefix: "/api/retention" });
@@ -33,6 +33,7 @@ it("nega todas as ações de Churn sem permissão antes de acessar dados ou fila
     for (const url of [
       "/summary",
       "/customers",
+      "/customers?snapshotId=00000000-0000-4000-8000-000000000001",
       "/customers?attentionOnly=true",
       "/customers?workflowStatus=RESOLVED",
       "/customers/1",
@@ -91,7 +92,7 @@ it("a fila liberada não concede painel e a leitura do cliente não concede escr
   const authenticated = vi
     .spyOn(AuthService.prototype, "authenticate")
     .mockResolvedValue({ id: 2, name: "Teste", email: "test@example.test", role: "USER", permissions: ["churn.attention.view"] });
-  vi.spyOn(RetentionRepository.prototype, "listCustomers").mockResolvedValue({ items: [], total: 0 });
+  vi.spyOn(DirectRetentionService.prototype, "listCustomers").mockResolvedValue({ items: [], total: 0 });
   const query = vi.spyOn(db, "query");
   const app = Fastify();
   await app.register(retentionRoutes, { prefix: "/api/retention" });

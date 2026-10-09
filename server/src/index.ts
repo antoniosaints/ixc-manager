@@ -10,12 +10,15 @@ import { networkRoutes } from "./controllers/networkController.js";
 import { financeRoutes } from "./controllers/financeController.js";
 import { collectionsRoutes } from "./controllers/collectionsController.js";
 import { upgradeRoutes } from "./controllers/upgradeController.js";
-import { scheduleRetentionJobs } from "./queues/retentionQueue.js";
-import "./workers/retentionWorker.js";
+import { directRetention } from "./services/retention/DirectRetentionService.js";
 import { registerFrontend } from "./http/frontend.js";
 import { corsOptions } from "./http/cors.js";
+import { loginToolsRoutes } from "./controllers/loginToolsController.js";
+
+import { providerAnalyticsRoutes } from "./controllers/providerAnalyticsController.js";
 
 const app = Fastify({ logger: true });
+app.addHook("onClose", () => directRetention.close());
 await app.register(cors, corsOptions(env.CORS_ORIGIN));
 await app.register(websocket, { options: { maxPayload: 4096 } });
 await app.register(authRoutes, { prefix: "/api/auth" });
@@ -24,13 +27,10 @@ await app.register(retentionRoutes, { prefix: "/api/retention" });
 await app.register(upgradeRoutes, { prefix: "/api/upgrades", logLevel: "silent" });
 await app.register(supportRoutes, { prefix: "/api/support", logLevel: "silent" });
 await app.register(networkRoutes, { prefix: "/api/network", logLevel: "silent" });
+await app.register(loginToolsRoutes, { prefix: "/api/login-tools", logLevel: "silent" });
 await app.register(financeRoutes, { prefix: "/api/finance", logLevel: "silent" });
 await app.register(collectionsRoutes, { prefix: "/api/collections", logLevel: "silent" });
+await app.register(providerAnalyticsRoutes, { prefix: "/api/provider-analytics", logLevel: "silent" });
 app.get("/health", async () => ({ status: "ok" }));
 await registerFrontend(app, env.FRONTEND_DIST);
 await app.listen({ port: env.PORT, host: "0.0.0.0" });
-
-// The API remains available for reads even when the background queue is
-// temporarily unavailable. Queue-dependent actions then return their own error
-// instead of taking down every dashboard request at startup.
-scheduleRetentionJobs().catch((error: unknown) => app.log.error(error, "Retention scheduler unavailable; retry after Redis is restored"));

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Settings2, Palette, ShieldCheck, Users } from "lucide-vue-next";
+import { Settings2, Palette, ShieldCheck, Users, ChartNoAxesCombined, ShieldAlert } from "lucide-vue-next";
 </script>
 <template>
   <div class="compact-view">
@@ -8,11 +8,14 @@ import { Settings2, Palette, ShieldCheck, Users } from "lucide-vue-next";
       <h1 class="text-2xl font-extrabold tracking-tight">
         <Settings2 class="mr-2 inline h-5 w-5 align-middle" aria-hidden="true" focusable="false" />Configurações
       </h1>
-      <p class="mt-1 text-xs text-slate-500">Aparência, usuários e perfis de acesso. Área exclusiva do administrador.</p>
+      <p class="mt-1 text-xs text-slate-500">Aparência, indicadores, usuários e perfis de acesso. Área exclusiva do administrador.</p>
     </section>
     <nav class="mb-4 flex flex-wrap gap-2" aria-label="Configurações">
       <RouterLink to="/settings/appearance" class="settings-tab"
         ><Palette class="h-4 w-4" aria-hidden="true" focusable="false" />Aparência</RouterLink
+      ><RouterLink to="/settings/analytics" class="settings-tab"
+        ><ChartNoAxesCombined class="h-4 w-4" aria-hidden="true" />Analytics</RouterLink
+      ><RouterLink to="/settings/churn" class="settings-tab"><ShieldAlert class="h-4 w-4" aria-hidden="true" />Churn</RouterLink
       ><RouterLink to="/settings/users" class="settings-tab"
         ><Users class="h-4 w-4" aria-hidden="true" focusable="false" />Usuários</RouterLink
       ><RouterLink to="/settings/profiles" class="settings-tab"

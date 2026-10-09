@@ -23,6 +23,7 @@ export const useAuthStore = defineStore("auth", {
       return this.can("churn.attention.view") || this.can("churn.resolved.view");
     },
     home(): string {
+      if (this.can("analytics.dashboard.view")) return "/overview";
       if (this.can("churn.dashboard")) return "/";
       if (this.can("churn.analytics")) return "/analytics";
       if (this.can("churn.attention.view")) return "/attention";
@@ -30,6 +31,7 @@ export const useAuthStore = defineStore("auth", {
       if (this.can("upgrades.opportunities.view")) return "/upgrades";
       if (this.can("upgrades.plans.view")) return "/upgrades/plans";
       if (this.can("support.customers.view")) return "/support";
+      if (this.can("support.orders.view")) return "/support/orders";
       if (this.can("network.boxes.view")) return "/network";
       if (this.can("network.logins.list")) return "/network/logins";
       if (this.can("network.onus.view")) return "/network/onus";

@@ -3,6 +3,8 @@ import { computed, defineAsyncComponent, ref, watch } from "vue";
 import { FileText, Network, Headset, Wrench, ReceiptText } from "lucide-vue-next";
 import { type RecordTarget } from "../recordNavigation";
 import RecordDetailDialog from "./RecordDetailDialog.vue";
+import LoginTechnologyBadge from "./LoginTechnologyBadge.vue";
+import type { UpgradeLogin } from "../upgradesApi";
 const props = defineProps<{ target: RecordTarget }>();
 const emit = defineEmits<{ close: [] }>();
 const Box = defineAsyncComponent(() => import("./NetworkBoxDialog.vue"));
@@ -11,10 +13,16 @@ const Login = defineAsyncComponent(() => import("./QuickLoginDetail.vue"));
 const Case = defineAsyncComponent(() => import("./SupportCaseDetail.vue"));
 const Collection = defineAsyncComponent(() => import("./CollectionCustomerDetail.vue"));
 const loginName = ref("");
+const loginTechnology = ref<UpgradeLogin["technology"]>();
+function loginLoaded(name: string, technology: UpgradeLogin["technology"]) {
+  loginName.value = name;
+  loginTechnology.value = technology;
+}
 watch(
   () => props.target,
   () => {
     loginName.value = "";
+    loginTechnology.value = undefined;
   }
 );
 const title = computed(
@@ -35,13 +43,16 @@ const icon = computed(
     :module="target.kind === 'collection' ? 'collections' : target.kind === 'contract' ? target.module : 'support'"
     @close="emit('close')"
   >
+    <template #title-badge
+      ><LoginTechnologyBadge v-if="target.kind === 'login' && loginTechnology" :technology="loginTechnology"
+    /></template>
     <Contract v-if="target.kind === 'contract'" :contract-id="String(target.id)" :module="target.module" />
     <Login
       v-else-if="target.kind === 'login'"
       :key="`${target.contractId}-${target.id}`"
       :contract-id="target.contractId"
       :login-id="target.id"
-      @loaded="loginName = $event"
+      @loaded="loginLoaded"
     />
     <Case
       v-else-if="target.kind === 'orders' || target.kind === 'tickets'"
