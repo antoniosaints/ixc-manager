@@ -6,7 +6,7 @@ export interface ManeuverBackup {
   token: string;
   createdAt: string;
   state: ManeuverResult["state"];
-  logins: { id: number; login: string; fromPort: number; toPort: number }[];
+  logins: { id: number; login: string; fromPort: number; toPort: number; fromBoxId?: number; toBoxId?: number }[];
 }
 const key = (userId: number, boxId: number) => `retencao-cas.port-maneuver.${userId}.${boxId}`;
 export function saveManeuverBackup(userId: number, plan: ManeuverPlan, state: ManeuverResult["state"], storage: Storage = localStorage) {
@@ -17,7 +17,13 @@ export function saveManeuverBackup(userId: number, plan: ManeuverPlan, state: Ma
     token: plan.token,
     createdAt: new Date().toISOString(),
     state,
-    logins: plan.review.logins.map((r) => ({ id: r.id, login: r.login, fromPort: r.fromPort, toPort: r.toPort })),
+    logins: plan.review.logins.map((r) => ({
+      id: r.id,
+      login: r.login,
+      fromPort: r.fromPort,
+      toPort: r.toPort,
+      ...(r.fromBoxId ? { fromBoxId: r.fromBoxId, toBoxId: r.toBoxId } : {}),
+    })),
   };
   storage.setItem(key(userId, backup.boxId), JSON.stringify(backup));
   return backup;
@@ -41,7 +47,9 @@ export function readManeuverBackup(userId: number, boxId: number, storage: Stora
           r.id > 0 &&
           typeof r.login === "string" &&
           Number.isInteger(r.fromPort) &&
-          Number.isInteger(r.toPort)
+          Number.isInteger(r.toPort) &&
+          (r.fromBoxId === undefined ||
+            (Number.isSafeInteger(r.fromBoxId) && r.fromBoxId > 0 && Number.isSafeInteger(r.toBoxId) && r.toBoxId! > 0))
       )
     )
       throw new Error();

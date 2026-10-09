@@ -57,3 +57,13 @@ it("recusa lembrete corrompido e propaga falha de armazenamento antes da gravaç
   };
   expect(() => saveManeuverBackup(2, plan, "processing", denied)).toThrow("Quota");
 });
+
+it("mantém IDs das caixas de origem e destino no lembrete da transferência", () => {
+  const local = storage();
+  const transfer = {
+    ...plan,
+    review: { ...plan.review, boxTransfer: true, logins: [{ ...plan.review.logins[0]!, fromBoxId: 20, toBoxId: 21 }] },
+  };
+  saveManeuverBackup(2, transfer, "processing", local);
+  expect(readManeuverBackup(2, 20, local)?.logins[0]).toMatchObject({ fromBoxId: 20, toBoxId: 21 });
+});

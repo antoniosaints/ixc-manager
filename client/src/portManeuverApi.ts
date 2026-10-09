@@ -23,8 +23,21 @@ export interface ManeuverPlan {
     boxId: number;
     boxName: string;
     loginOnly?: boolean;
+    boxTransfer?: boolean;
     temporaryPort?: number | null;
-    logins: { id: number; login: string; customerId: number; contractId: number; fromPort: number; toPort: number; onuId: number | null }[];
+    logins: {
+      id: number;
+      login: string;
+      customerId: number;
+      contractId: number;
+      fromPort: number;
+      toPort: number;
+      onuId: number | null;
+      fromBoxId?: number;
+      fromBoxName?: string;
+      toBoxId?: number;
+      toBoxName?: string;
+    }[];
   };
   expiresInSeconds: number;
 }
@@ -47,10 +60,17 @@ async function requestPath<T>(path: string, body?: unknown): Promise<T> {
 }
 const request = <T>(boxId: number, path = "", body?: unknown) => requestPath<T>(`/boxes/${boxId}${path}`, body);
 export const portManeuverApi = {
+  destinations: (boxId: number, search = "") =>
+    request<{ items: { id: number; name: string; capacity: number; projectId: number }[]; hasMore: boolean }>(
+      boxId,
+      `/destinations?${new URLSearchParams({ search })}`
+    ),
   loginContext: (loginId: number) => requestPath<{ boxId: number; boxName: string }>(`/logins/${loginId}`),
   options: (boxId: number, loginId?: number) => request<ManeuverOptions>(boxId, loginId ? `/login-ports/${loginId}` : ""),
-  prepare: (boxId: number, input: { loginId: number; targetPort: number; swapLoginId?: number; loginOnly?: boolean }) =>
-    request<ManeuverPlan>(boxId, "/plans", input),
+  prepare: (
+    boxId: number,
+    input: { loginId: number; targetPort: number; swapLoginId?: number; loginOnly?: boolean; targetBoxId?: number }
+  ) => request<ManeuverPlan>(boxId, "/plans", input),
   execute: (boxId: number, token: string) => request<ManeuverResult>(boxId, `/operations/${token}/execute`, { confirmed: true }),
   status: (boxId: number, token: string) => request<ManeuverPlan & ManeuverResult>(boxId, `/operations/${token}`),
   recovery: (boxId: number, token: string) => request<ManeuverPlan>(boxId, `/operations/${token}/recovery`, {}),

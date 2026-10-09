@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onBeforeUnmount, ref } from "vue";
 import { ArrowLeftRight, ArrowRight, RefreshCw, ShieldCheck, AlertTriangle, CheckCircle2 } from "lucide-vue-next";
 import RecordDetailDialog from "./RecordDetailDialog.vue";
 import SearchableSelect from "./SearchableSelect.vue";
@@ -9,8 +9,8 @@ import { clearManeuverBackup, readManeuverBackup, saveManeuverBackup, type Maneu
 import { useAuthStore } from "../stores/auth";
 import { toast } from "../notifications/toast";
 import { queryErrorMessage } from "../queryErrorMessage";
-const props = defineProps<{ boxId: number; boxName: string; initialLoginId?: number; loginOnly?: boolean }>();
-const emit = defineEmits<{ close: []; completed: [ports: { id: number; port: number }[]] }>();
+const props = defineProps<{ boxId: number; boxName: string; initialLoginId?: number; loginOnly?: boolean; boxTransfer?: boolean }>();
+const emit = defineEmits<{ close: []; completed: [ports: { id: number; port: number; boxId?: number; boxName?: string }[]] }>();
 const auth = useAuthStore(),
   userId = auth.user?.id ?? 0;
 const options = ref<ManeuverOptions | null>(null),
@@ -29,8 +29,58 @@ const requested = ref(false),
   manualChecked = ref(false);
 const invalidBackup = ref(false);
 const allowed = computed(() => ["network.boxes.view", "network.logins.view", "network.ports.manage"].every((p) => auth.can(p)));
+const destinationId = ref<number | string>("");
+const destination = ref<ManeuverOptions | null>(null);
+const destinations = ref<{ id: number; name: string; capacity: number; projectId: number }[]>([]);
+const destinationLoading = ref(false),
+  searchingBoxes = ref(false),
+  moreBoxes = ref(false);
+let searchVersion = 0,
+  destinationVersion = 0;
+const destinationOptions = computed(() =>
+  destinations.value.map((b) => ({
+    value: b.id,
+    label: `${b.name} · #${b.id}`,
+    description: `${b.capacity} portas · Projeto #${b.projectId}`,
+  }))
+);
+const targetOptions = computed(() => (props.boxTransfer ? destination.value : options.value));
+async function searchBoxes(search = "") {
+  const version = ++searchVersion;
+  searchingBoxes.value = true;
+  try {
+    const next = await portManeuverApi.destinations(props.boxId, search.slice(0, 100));
+    if (version === searchVersion) {
+      destinations.value = next.items;
+      moreBoxes.value = next.hasMore;
+    }
+  } catch (e) {
+    if (version === searchVersion) error.value = (e as Error).message;
+  } finally {
+    if (version === searchVersion) searchingBoxes.value = false;
+  }
+}
+async function selectBox(value: number | string) {
+  destinationId.value = value;
+  destination.value = null;
+  selectTarget("");
+  const version = ++destinationVersion;
+  destinationLoading.value = true;
+  try {
+    const next = await portManeuverApi.options(Number(value));
+    if (version === destinationVersion) destination.value = next;
+  } catch (e) {
+    if (version === destinationVersion) error.value = (e as Error).message;
+  } finally {
+    if (version === destinationVersion) destinationLoading.value = false;
+  }
+}
+onBeforeUnmount(() => {
+  searchVersion++;
+  destinationVersion++;
+});
 const source = computed(() => options.value?.logins.find((r) => r.id === Number(loginId.value)));
-const target = computed(() => options.value?.ports.find((r) => r.port === Number(targetPort.value)));
+const target = computed(() => targetOptions.value?.ports.find((r) => r.port === Number(targetPort.value)));
 const loginOptions = computed(() =>
   (options.value?.logins ?? []).map((r) => ({
     value: r.id,
@@ -40,17 +90,20 @@ const loginOptions = computed(() =>
   }))
 );
 const portOptions = computed(() =>
-  (options.value?.ports ?? []).map((p) => ({
+  (targetOptions.value?.ports ?? []).map((p) => ({
     value: p.port,
     label: `Porta ${p.port} · ${p.status === "free" ? "Livre" : p.status === "blocked" ? "Bloqueada" : p.login}`,
     description:
       p.reason ??
       (p.status === "occupied"
-        ? props.loginOnly
+        ? props.loginOnly || props.boxTransfer
           ? "Porta ocupada por outro login"
           : "Trocar as portas dos dois logins"
         : "Mover o login para esta porta"),
-    disabled: p.status === "blocked" || (props.loginOnly && p.status === "occupied") || p.port === source.value?.port,
+    disabled:
+      p.status === "blocked" ||
+      ((props.loginOnly || props.boxTransfer) && p.status === "occupied") ||
+      (!props.boxTransfer && p.port === source.value?.port),
   }))
 );
 const pending = computed(() => !!backup.value && (requested.value || !plan.value));
@@ -66,16 +119,23 @@ const finished = computed(
 const operationLabel = computed(() =>
   plan.value?.review.mode === "restore"
     ? "Restaurar portas originais"
-    : plan.value?.review.loginOnly
-      ? "Mudar porta do login"
-      : plan.value?.review.mode === "swap"
-        ? "Trocar portas"
-        : "Mover login"
+    : plan.value?.review.boxTransfer
+      ? "Transferir entre caixas"
+      : plan.value?.review.loginOnly
+        ? "Mudar porta do login"
+        : plan.value?.review.mode === "swap"
+          ? "Trocar portas"
+          : "Mover login"
 );
 async function loadOptions() {
   loading.value = true;
   try {
     options.value = await portManeuverApi.options(props.boxId, props.loginOnly ? props.initialLoginId : undefined);
+    if (props.boxTransfer && destinationId.value) {
+      const id = Number(destinationId.value);
+      const next = await portManeuverApi.options(id);
+      if (Number(destinationId.value) === id) destination.value = next;
+    }
   } catch (e) {
     error.value = queryErrorMessage(e instanceof Error ? e.message : "Falha ao consultar portas.");
   } finally {
@@ -102,6 +162,7 @@ async function prepare() {
       loginId: source.value.id,
       targetPort: target.value.port,
       ...(props.loginOnly ? { loginOnly: true } : {}),
+      ...(props.boxTransfer ? { targetBoxId: Number(destinationId.value) } : {}),
       ...(target.value.status === "occupied" && target.value.loginId ? { swapLoginId: target.value.loginId } : {}),
     });
     plan.value = prepared;
@@ -133,7 +194,7 @@ function applyResult(next: ManeuverResult) {
   }
   if (next.state === "success") {
     toast.success(next.result?.message ?? "Manobra concluída");
-    emit("completed", plan.value?.review.logins.map((r) => ({ id: r.id, port: r.toPort })) ?? []);
+    emit("completed", plan.value?.review.logins.map((r) => ({ id: r.id, port: r.toPort, boxId: r.toBoxId, boxName: r.toBoxName })) ?? []);
   }
 }
 async function execute() {
@@ -251,19 +312,24 @@ onMounted(async () => {
     invalidBackup.value = true;
   }
   await loadOptions();
+  if (props.boxTransfer) await searchBoxes();
   if (backup.value) await status();
 });
 </script>
 <template>
   <RecordDetailDialog
-    :title="loginOnly ? 'Mudar porta do login' : 'Manobra de portas'"
+    :title="boxTransfer ? 'Manobra de caixa' : loginOnly ? 'Mudar porta do login' : 'Manobra de portas'"
     :subtitle="`${boxName} · CTO #${boxId}`"
     :icon="ArrowLeftRight"
     module="network"
     :close-on-backdrop="false"
     @close="close"
   >
-    <p v-if="loginOnly" class="mb-4 text-xs leading-5 text-slate-500">
+    <p v-if="boxTransfer" class="mb-4 text-xs leading-5 text-slate-500">
+      Transfira um login e sua ONU para uma porta livre de outra CTO da mesma OLT. Caixa, porta e projeto da ONU serão atualizados no IXC. A
+      conexão física precisa acompanhar o destino. Trocar de OLT exige reautorizar o equipamento.
+    </p>
+    <p v-else-if="loginOnly" class="mb-4 text-xs leading-5 text-slate-500">
       Edite apenas a porta cadastrada neste login, na mesma CTO. O cadastro da ONU não será alterado. Uma porta vinculada somente à ONU
       deste login pode ser selecionada para corrigir um cadastro sem porta ou divergente.
     </p>
@@ -275,7 +341,8 @@ onMounted(async () => {
       <p class="font-bold"><AlertTriangle class="mr-1 inline h-4 w-4" aria-hidden="true" />Há uma manobra registrada neste navegador</p>
       <p class="mt-1">Consulte o resultado antes de iniciar outra. As credenciais dos logins não são armazenadas neste lembrete.</p>
       <p v-for="r in backup.logins" :key="r.id" class="mt-1 break-words">
-        #{{ r.id }} · {{ r.login }} · Porta {{ r.fromPort || "sem porta" }} → {{ r.toPort }}
+        #{{ r.id }} · {{ r.login }}{{ r.fromBoxId ? ` · CTO #${r.fromBoxId} → #${r.toBoxId}` : "" }} · Porta
+        {{ r.fromPort || "sem porta" }} → {{ r.toPort }}
       </p>
     </div>
     <p v-if="error" class="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-700" role="alert">{{ error }}</p>
@@ -294,7 +361,7 @@ onMounted(async () => {
           <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" />Atualizar portas
         </button>
       </div>
-      <div class="grid gap-3 md:grid-cols-2">
+      <div class="grid gap-3" :class="boxTransfer ? 'md:grid-cols-3' : 'md:grid-cols-2'">
         <SearchableSelect
           :model-value="loginId"
           :options="loginOptions"
@@ -304,24 +371,37 @@ onMounted(async () => {
           @update:model-value="selectSource"
         />
         <SearchableSelect
+          v-if="boxTransfer"
+          :model-value="destinationId"
+          :options="destinationOptions"
+          label="CTO de destino"
+          placeholder="Buscar por nome ou ID da caixa"
+          remote
+          :loading="searchingBoxes"
+          :disabled="busy || pending || !source || !allowed"
+          :hint="moreBoxes ? 'Mais de 50 caixas. Digite para refinar a busca.' : 'Caixas ativas da mesma OLT.'"
+          @search="searchBoxes"
+          @update:model-value="selectBox"
+        />
+        <SearchableSelect
           :model-value="targetPort"
           :options="portOptions"
           label="Porta de destino"
-          :loading="loading"
-          :disabled="busy || pending || !source || !allowed"
+          :loading="loading || destinationLoading"
+          :disabled="busy || pending || !source || !allowed || (boxTransfer && !destination)"
           @update:model-value="selectTarget"
         />
       </div>
-      <div v-if="options" class="mt-4 rounded-xl border border-slate-200 p-3">
+      <div v-if="targetOptions" class="mt-4 rounded-xl border border-slate-200 p-3">
         <div class="mb-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
-          <strong class="text-xs text-ink">{{ options.capacity }} portas</strong
+          <strong class="text-xs text-ink">{{ targetOptions.capacity }} portas{{ boxTransfer ? ` · ${targetOptions.boxName}` : "" }}</strong
           ><span><i class="mr-1 inline-block h-2 w-2 rounded-full bg-emerald-500" />Livre</span
           ><span><i class="mr-1 inline-block h-2 w-2 rounded-full bg-blue-500" />Ocupada</span
           ><span><i class="mr-1 inline-block h-2 w-2 rounded-full bg-slate-400" />Bloqueada</span>
         </div>
         <div class="grid max-h-60 grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-8">
           <button
-            v-for="p in options.ports"
+            v-for="p in targetOptions.ports"
             :key="p.port"
             type="button"
             :disabled="
@@ -330,8 +410,8 @@ onMounted(async () => {
               !source ||
               !allowed ||
               p.status === 'blocked' ||
-              (loginOnly && p.status === 'occupied') ||
-              p.port === source.port
+              ((loginOnly || boxTransfer) && p.status === 'occupied') ||
+              (!boxTransfer && p.port === source.port)
             "
             :title="`Porta ${p.port}: ${p.reason ?? p.login ?? 'Livre'}`"
             :aria-label="`Porta ${p.port}: ${p.status === 'free' ? 'livre' : (p.login ?? 'bloqueada')}`"
@@ -349,12 +429,12 @@ onMounted(async () => {
           >
             <strong class="block text-sm">{{ p.port }}</strong
             >{{
-              p.port === source?.port
+              !boxTransfer && p.port === source?.port
                 ? "Origem"
                 : p.status === "free"
                   ? "Livre"
                   : p.status === "occupied"
-                    ? loginOnly
+                    ? loginOnly || boxTransfer
                       ? "Ocupada"
                       : "Trocar"
                     : "Revisar"
@@ -368,7 +448,8 @@ onMounted(async () => {
       <div v-if="source && target" class="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
         <strong>{{ target.status === "occupied" ? "Troca de portas" : "Mudança para porta livre" }}</strong>
         <p class="mt-1 break-words">
-          {{ source.login }}: {{ source.port ? `porta ${source.port}` : "sem porta" }} → porta {{ target.port }}
+          {{ source.login }}{{ boxTransfer ? ` · ${boxName} → ${destination?.boxName}` : "" }}:
+          {{ source.port ? `porta ${source.port}` : "sem porta" }} → porta {{ target.port }}
         </p>
         <p v-if="target.status === 'occupied'" class="mt-1 break-words">{{ target.login }}: porta {{ target.port }} → {{ source.port }}</p>
       </div>
@@ -377,10 +458,23 @@ onMounted(async () => {
         ><button
           type="button"
           class="button-primary"
-          :disabled="busy || loading || pending || !source || !target || !allowed"
+          :disabled="
+            busy ||
+            loading ||
+            destinationLoading ||
+            pending ||
+            !source ||
+            !!source.blockedReason ||
+            !target ||
+            target.status === 'blocked' ||
+            ((loginOnly || boxTransfer) && target.status !== 'free') ||
+            !allowed
+          "
           @click="prepare"
         >
-          <ShieldCheck class="h-4 w-4" aria-hidden="true" />{{ busy ? "Validando…" : loginOnly ? "Revisar alteração" : "Revisar manobra" }}
+          <ShieldCheck class="h-4 w-4" aria-hidden="true" />{{
+            busy ? "Validando…" : boxTransfer ? "Revisar transferência" : loginOnly ? "Revisar alteração" : "Revisar manobra"
+          }}
         </button>
       </div>
     </template>
@@ -397,6 +491,8 @@ onMounted(async () => {
           v-if="executing && plan.review.logins[0]"
           :from-port="plan.review.logins[0].fromPort"
           :to-port="plan.review.logins[0].toPort"
+          :from-box-id="plan.review.logins[0].fromBoxId"
+          :to-box-id="plan.review.logins[0].toBoxId"
           :restoring="plan.review.mode === 'restore'"
         />
         <div
@@ -427,9 +523,12 @@ onMounted(async () => {
             </p>
           </div>
           <div class="flex shrink-0 items-center gap-2 text-sm font-bold">
-            <span class="rounded-lg bg-slate-100 px-3 py-2">{{ r.fromPort ? `Porta ${r.fromPort}` : "Sem porta" }}</span
+            <span class="rounded-lg bg-slate-100 px-3 py-2"
+              ><small v-if="r.fromBoxName" class="block text-[11px]">{{ r.fromBoxName }} · #{{ r.fromBoxId }}</small
+              >{{ r.fromPort ? `Porta ${r.fromPort}` : "Sem porta" }}</span
             ><ArrowRight class="h-4 w-4 text-slate-400" aria-hidden="true" /><span
               class="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-700"
+              ><small v-if="r.toBoxName" class="block text-[11px]">{{ r.toBoxName }} · #{{ r.toBoxId }}</small
               >Porta {{ r.toPort }}</span
             >
           </div>
@@ -454,7 +553,7 @@ onMounted(async () => {
         />{{ result.result?.message ?? "O resultado ainda não foi confirmado. Consulte antes de repetir." }}
       </div>
       <label v-if="!requested" class="mt-4 flex items-start gap-2 text-xs leading-5"
-        ><input v-model="confirmed" type="checkbox" class="mt-1 accent-blue-600" :disabled="busy" />Conferi a CTO, os logins e as portas.
+        ><input v-model="confirmed" type="checkbox" class="mt-1 accent-blue-600" :disabled="busy" />Conferi as CTOs, os logins e as portas.
         Confirmo {{ plan.review.mode === "restore" ? "a restauração" : "a manobra" }} destes cadastros no IXC.</label
       >
       <div class="mt-4 flex flex-wrap justify-end gap-2">

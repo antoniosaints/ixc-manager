@@ -42,6 +42,11 @@ export async function portManeuverRoutes(app: FastifyInstance) {
     await access(request);
     return service.options(boxParams.parse(request.params).boxId);
   });
+  app.get("/boxes/:boxId/destinations", { logLevel: "silent" }, async (request) => {
+    await access(request);
+    const { search } = z.object({ search: z.string().trim().max(100).default("") }).parse(request.query);
+    return service.destinations(boxParams.parse(request.params).boxId, search);
+  });
   app.post("/boxes/:boxId/plans", { logLevel: "silent", bodyLimit: 512 }, async (request) => {
     const user = await access(request);
     return service.prepare(user.id, boxParams.parse(request.params).boxId, portManeuverInput.parse(request.body));

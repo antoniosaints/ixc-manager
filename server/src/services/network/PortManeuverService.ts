@@ -9,12 +9,31 @@ import { OnuOperationStore, type OperationStore, type OnuOperation } from "./Onu
 
 const id = z.coerce.number().int().positive().safe();
 export const portManeuverInput = z
-  .object({ loginId: id, targetPort: id.max(512), swapLoginId: id.optional(), loginOnly: z.boolean().optional() })
+  .object({
+    loginId: id,
+    targetPort: id.max(512),
+    swapLoginId: id.optional(),
+    targetBoxId: id.optional(),
+    loginOnly: z.boolean().optional(),
+  })
   .strict()
-  .refine((value) => !value.loginOnly || !value.swapLoginId, "A edição individual não troca dois logins.");
+  .refine((value) => !value.loginOnly || !value.swapLoginId, "A edição individual não troca dois logins.")
+  .refine(
+    (value) => !value.targetBoxId || (!value.loginOnly && !value.swapLoginId),
+    "A transferência de caixa usa uma porta livre e inclui a ONU."
+  );
 type Input = z.infer<typeof portManeuverInput>;
 type Row = Record<string, unknown>;
-type PortRecord = { kind: "login" | "onu"; id: number; loginId: number; boxId: number; port: number; identity: string };
+type PortRecord = {
+  kind: "login" | "onu";
+  id: number;
+  loginId: number;
+  boxId: number;
+  port: number;
+  identity: string;
+  projectId?: number;
+  identityProject?: number;
+};
 type ReviewLogin = {
   id: number;
   login: string;
@@ -23,6 +42,10 @@ type ReviewLogin = {
   fromPort: number;
   toPort: number;
   onuId: number | null;
+  fromBoxId?: number;
+  fromBoxName?: string;
+  toBoxId?: number;
+  toBoxName?: string;
 };
 type Plan = {
   kind: "port-maneuver";
@@ -37,6 +60,7 @@ type Plan = {
   logins: ReviewLogin[];
   temporaryPort?: number | null;
   loginOnly?: boolean;
+  boxes?: { id: number; name: string; capacity: number; oltId: number; projectId: number }[];
 };
 const text = (value: unknown) => String(value ?? "").trim();
 const num = (value: unknown) => Number(value ?? 0);
@@ -98,8 +122,11 @@ function record(kind: PortRecord["kind"], row: OnuRow): PortRecord {
     boxId: num(row.id_caixa_ftth),
     port: num(row[portKey(kind)]),
     identity: identity(kind, row),
+    ...(kind === "onu" && Object.hasOwn(row, "id_projeto") ? { projectId: num(row.id_projeto), identityProject: num(row.id_projeto) } : {}),
   };
 }
+const samePosition = (a: PortRecord, b: PortRecord) =>
+  a.boxId === b.boxId && a.port === b.port && (a.projectId === undefined || b.projectId === undefined || a.projectId === b.projectId);
 const recordKey = (r: PortRecord) => `${r.kind}:${r.id}`;
 
 /** Only cadastro ports are changed. No deletion, SQL writes, OLT provisioning, or automatic command retries. */
@@ -116,7 +143,7 @@ export class PortManeuverService {
   private async read(s: IxcReadSession, boxId: number) {
     const [box] = await s.select<Row>({
       name: "port-maneuver-box",
-      sql: "SELECT id,descricao,status,capacidade,id_transmissor FROM rad_caixa_ftth WHERE id=?",
+      sql: "SELECT id,descricao,status,capacidade,id_transmissor,id_projeto FROM rad_caixa_ftth WHERE id=?",
       params: [boxId],
       timeoutSeconds: 5,
     });
@@ -238,13 +265,38 @@ export class PortManeuverService {
     const options = await this.options(num(login.id_caixa_ftth), loginId);
     return { boxId: options.boxId, boxName: options.boxName };
   }
+  async destinations(boxId: number, search = "") {
+    return this.db.withSnapshot(async (s) => {
+      const source = await this.read(s, id.parse(boxId));
+      const q = text(search).slice(0, 100);
+      const items = await s.select<Row>({
+        name: "port-maneuver-destinations",
+        sql: "SELECT id,descricao name,id_projeto projectId,capacidade capacity FROM rad_caixa_ftth WHERE status='A' AND id_transmissor=? AND id<>? AND (descricao LIKE ? ESCAPE '!' OR CAST(id AS CHAR)=?) ORDER BY descricao,id LIMIT 51",
+        params: [num(source.box.id_transmissor), boxId, `%${q.replace(/[!%_]/g, "!$&")}%`, q],
+        timeoutSeconds: 5,
+      });
+      return { items: items.slice(0, 50), hasMore: items.length > 50 };
+    });
+  }
   private keys(plan: Plan) {
-    return [`box:${plan.boxId}`, `olt:${plan.oltId}`, ...plan.logins.map((r) => `login:${r.id}`)];
+    return [
+      ...new Set([
+        ...(plan.boxes ?? [{ id: plan.boxId, oltId: plan.oltId }]).flatMap((b) => [`box:${b.id}`, `olt:${b.oltId}`]),
+        ...plan.logins.map((r) => `login:${r.id}`),
+      ]),
+    ];
   }
   private async box(plan: Plan) {
-    const row = await this.api.record("rad_caixa_ftth", plan.boxId);
-    if (text(row.status) !== "A" || num(row.capacidade) !== plan.capacity || num(row.id_transmissor) !== plan.oltId)
-      throw fail("Os dados da CTO mudaram. Atualize e revise novamente.");
+    for (const b of plan.boxes ?? [{ id: plan.boxId, capacity: plan.capacity, oltId: plan.oltId }]) {
+      const row = await this.api.record("rad_caixa_ftth", b.id);
+      if (
+        text(row.status) !== "A" ||
+        num(row.capacidade) !== b.capacity ||
+        num(row.id_transmissor) !== b.oltId ||
+        ("projectId" in b && num(row.id_projeto) !== b.projectId)
+      )
+        throw fail("Os dados de uma CTO mudaram. Atualize e revise novamente.");
+    }
   }
   private async apiRecord(r: PortRecord) {
     const row = await this.api.record(table(r), r.id);
@@ -252,25 +304,43 @@ export class PortManeuverService {
       r.kind === "login"
         ? ["login", "id_cliente", "id_contrato", "ativo", "senha", "autenticacao", "id_caixa_ftth", "ftth_porta"]
         : ["id_login", "id_contrato", "id_transmissor", "id_caixa_ftth", "porta_ftth", "mac", "ponid"];
-    if (critical.some((key) => !Object.hasOwn(row, key)))
+    if ([...critical, ...(r.projectId !== undefined ? ["id_projeto"] : [])].some((key) => !Object.hasOwn(row, key)))
       throw fail("O IXC retornou um cadastro incompleto. Nenhum formulário incompleto será salvo.");
-    if (record(r.kind, row).identity !== r.identity)
+    if (identity(r.kind, r.identityProject === undefined ? row : { ...row, id_projeto: r.identityProject }) !== r.identity)
       throw fail("O cadastro ou vínculo mudou desde a revisão. Atualize antes de continuar.");
     return row;
   }
   private async collision(plan: Plan) {
-    const t = await this.db.withSnapshot((s) => this.read(s, plan.boxId));
-    if (t.capacity !== plan.capacity || num(t.box.id_transmissor) !== plan.oltId) throw fail("A CTO mudou desde a revisão.");
-    const wanted = new Set([...plan.target, ...plan.original].filter((r) => r.boxId === plan.boxId && r.port > 0).map((r) => r.port));
-    if (plan.temporaryPort) wanted.add(plan.temporaryPort);
+    const topologies = await this.db.withSnapshot(async (s) => {
+      const items = [];
+      for (const b of plan.boxes ?? [{ id: plan.boxId, capacity: plan.capacity, oltId: plan.oltId }]) {
+        const t = await this.read(s, b.id);
+        if (
+          t.capacity !== b.capacity ||
+          num(t.box.id_transmissor) !== b.oltId ||
+          ("projectId" in b && num(t.box.id_projeto) !== b.projectId)
+        )
+          throw fail("A CTO mudou desde a revisão.");
+        items.push(t);
+      }
+      return items;
+    });
     const loginIds = new Set(plan.logins.map((r) => r.id)),
       onuIds = new Set(plan.logins.flatMap((r) => (r.onuId ? [r.onuId] : [])));
-    if (
-      t.logins.some((r) => !loginIds.has(num(r.id)) && wanted.has(num(r.ftth_porta))) ||
-      t.onus.some((r) => num(r.id_caixa_ftth) === plan.boxId && !onuIds.has(num(r.id)) && wanted.has(num(r.porta_ftth))) ||
-      t.reservations.some((r) => wanted.has(num(r.porta_ftth)))
-    )
-      throw fail("Uma porta da manobra foi ocupada ou reservada. Atualize a CTO antes de continuar.");
+    for (const t of topologies) {
+      const wanted = new Set([...plan.target, ...plan.original].filter((r) => r.boxId === num(t.box.id) && r.port > 0).map((r) => r.port));
+      if (plan.temporaryPort && num(t.box.id) === plan.boxId) wanted.add(plan.temporaryPort);
+      if (
+        t.logins.some((r) => !loginIds.has(num(r.id)) && wanted.has(num(r.ftth_porta))) ||
+        t.onus.some((r) => num(r.id_caixa_ftth) === num(t.box.id) && !onuIds.has(num(r.id)) && wanted.has(num(r.porta_ftth))) ||
+        t.reservations.some((r) => wanted.has(num(r.porta_ftth)))
+      )
+        throw fail("Uma porta da manobra foi ocupada ou reservada. Atualize as CTOs antes de continuar.");
+    }
+    const t = {
+      logins: [...new Map(topologies.flatMap((t) => t.logins).map((r) => [num(r.id), r])).values()],
+      onus: [...new Map(topologies.flatMap((t) => t.onus).map((r) => [num(r.id), r])).values()],
+    };
     const linked = t.onus.filter((r) => loginIds.has(num(r.id_login)));
     if (t.logins.filter((r) => loginIds.has(num(r.id))).some((r) => num(r.validContractId) !== num(r.id_contrato)))
       throw fail("O vínculo do contrato mudou durante a manobra.");
@@ -305,6 +375,7 @@ export class PortManeuverService {
         logins: plan.logins,
         loginOnly: !!plan.loginOnly,
         temporaryPort: plan.temporaryPort ?? null,
+        boxTransfer: !!plan.boxes,
       },
       expiresInSeconds: 300,
     };
@@ -313,11 +384,17 @@ export class PortManeuverService {
     portManeuverInput.parse(input);
     const t = await this.db.withSnapshot((s) => this.read(s, id.parse(boxId))),
       options = this.dto(t, input.loginOnly ? input.loginId : undefined);
+    const destination = input.targetBoxId ? await this.db.withSnapshot((s) => this.read(s, input.targetBoxId!)) : t;
+    if (input.targetBoxId && input.targetBoxId === boxId) throw fail("Escolha outra CTO para transferir o login.");
+    if (num(destination.box.id_transmissor) !== num(t.box.id_transmissor))
+      throw fail("Transferências entre OLTs exigem reautorização da ONU. Selecione uma CTO da mesma OLT.");
+    const destinationOptions = input.targetBoxId ? this.dto(destination) : options;
     const source = options.logins.find((r) => r.id === input.loginId),
-      target = options.ports.find((p) => p.port === input.targetPort);
+      target = destinationOptions.ports.find((p) => p.port === input.targetPort);
     if (!source || source.blockedReason) throw fail(source?.blockedReason ?? "Login não encontrado nesta CTO.");
-    if (!target || target.port === source.port) throw fail("Selecione outra porta dentro da capacidade da CTO.");
+    if (!target || (!input.targetBoxId && target.port === source.port)) throw fail("Selecione outra porta dentro da capacidade da CTO.");
     if (target.status === "blocked") throw fail(target.reason ?? "A porta está bloqueada para manobra.");
+    if (input.targetBoxId && target.status !== "free") throw fail("Escolha uma porta livre na CTO de destino.");
     if (input.loginOnly && target.status !== "free") throw fail("Escolha uma porta livre para editar somente este login.");
     if ((target.status === "occupied" && input.swapLoginId !== target.loginId) || (target.status === "free" && input.swapLoginId))
       throw fail("A ocupação da porta mudou. Atualize e confirme a troca novamente.");
@@ -332,6 +409,9 @@ export class PortManeuverService {
         fromPort: r.port,
         toPort: r.id === source.id ? target.port : source.port,
         onuId: r.onuId,
+        ...(input.targetBoxId
+          ? { fromBoxId: boxId, fromBoxName: options.boxName, toBoxId: input.targetBoxId, toBoxName: destinationOptions.boxName }
+          : {}),
       };
     });
     const before: PortRecord[] = [];
@@ -362,6 +442,14 @@ export class PortManeuverService {
           )
         )
           throw fail("O vínculo da ONU mudou. Atualize a CTO.");
+        if (
+          input.targetBoxId &&
+          (!Object.hasOwn(onu, "id_projeto") ||
+            !id.safeParse(destination.box.id_projeto).success ||
+            !id.safeParse(t.box.id_projeto).success ||
+            num(onu.id_projeto) !== num(t.box.id_projeto))
+        )
+          throw fail("Confira os projetos das CTOs e o vínculo de projeto da ONU antes de transferir.");
         const onuRecord = record("onu", onu);
         await this.apiRecord(onuRecord);
         before.push(onuRecord);
@@ -375,10 +463,27 @@ export class PortManeuverService {
       capacity: t.capacity,
       oltId: num(t.box.id_transmissor),
       before,
-      target: before.map((r) => ({ ...r, port: logins.find((l) => l.id === r.loginId)!.toPort })),
+      target: before.map((r) => ({
+        ...r,
+        port: logins.find((l) => l.id === r.loginId)!.toPort,
+        ...(input.targetBoxId
+          ? { boxId: input.targetBoxId, ...(r.kind === "onu" ? { projectId: num(destination.box.id_projeto) } : {}) }
+          : {}),
+      })),
       original: before,
       logins,
       loginOnly: !!input.loginOnly,
+      ...(input.targetBoxId
+        ? {
+            boxes: [t, destination].map((t) => ({
+              id: num(t.box.id),
+              name: text(t.box.descricao),
+              capacity: t.capacity,
+              oltId: num(t.box.id_transmissor),
+              projectId: num(t.box.id_projeto),
+            })),
+          }
+        : {}),
       temporaryPort: logins.length === 2 ? (options.ports.find((p) => p.status === "free")?.port ?? null) : null,
     };
     if (plan.mode === "swap" && !plan.temporaryPort)
@@ -398,7 +503,7 @@ export class PortManeuverService {
       // Resolve a lost response by reading all final bindings; never replay an uncertain PUT.
       const current: PortRecord[] = [];
       for (const r of plan.target) current.push(record(r.kind, await this.apiRecord(r)));
-      if (plan.target.every((r, i) => current[i]?.boxId === r.boxId && current[i]?.port === r.port)) {
+      if (plan.target.every((r, i) => current[i] && samePosition(current[i]!, r))) {
         await this.box(plan);
         await this.collision(plan);
         operation.state = "success";
@@ -430,7 +535,15 @@ export class PortManeuverService {
     ]);
     for (const r of plan.original) {
       const current = record(r.kind, await this.apiRecord(r));
-      if (current.boxId !== plan.boxId || !allowed.has(current.port))
+      if (
+        plan.boxes
+          ? ![...plan.original, ...plan.target].some(
+              (p) => recordKey(p) === recordKey(current) && p.boxId === current.boxId && p.port === current.port
+            ) ||
+            (current.projectId !== undefined &&
+              ![...plan.original, ...plan.target].some((p) => recordKey(p) === recordKey(current) && p.projectId === current.projectId))
+          : current.boxId !== plan.boxId || !allowed.has(current.port)
+      )
         throw fail("O cadastro foi movido para fora da manobra. A recuperação precisa ser conferida no IXC.");
       before.push(current);
     }
@@ -444,6 +557,14 @@ export class PortManeuverService {
         ...r,
         fromPort: before.find((b) => b.kind === "login" && b.id === r.id)!.port,
         toPort: plan.original.find((b) => b.kind === "login" && b.id === r.id)!.port,
+        ...(plan.boxes
+          ? {
+              fromBoxId: before.find((b) => b.kind === "login" && b.id === r.id)!.boxId,
+              fromBoxName: plan.boxes.find((b) => b.id === before.find((b) => b.kind === "login" && b.id === r.id)!.boxId)!.name,
+              toBoxId: plan.original.find((b) => b.kind === "login" && b.id === r.id)!.boxId,
+              toBoxName: plan.boxName,
+            }
+          : {}),
       })),
     };
     const options = await this.options(boxId);
@@ -457,13 +578,20 @@ export class PortManeuverService {
     const moves: { loginId: number; targets: PortRecord[]; label: string }[] = [];
     for (let attempt = 0; attempt < 6; attempt++) {
       const pending = plan.logins.filter((l) =>
-        plan.target.some((t) => t.loginId === l.id && current.find((r) => recordKey(r) === recordKey(t))?.port !== t.port)
+        plan.target.some(
+          (t) =>
+            t.loginId === l.id &&
+            !samePosition(
+              current.find((r) => recordKey(r) === recordKey(t))!,
+              t
+            )
+        )
       );
       if (!pending.length) return moves;
       const next = pending.find((l) =>
         plan.target
           .filter((r) => r.loginId === l.id)
-          .every((target) => !current.some((r) => r.loginId !== l.id && r.port > 0 && r.port === target.port))
+          .every((target) => !current.some((r) => r.loginId !== l.id && r.port > 0 && r.boxId === target.boxId && r.port === target.port))
       );
       const login = next ?? pending[0]!;
       if (!next && (!plan.temporaryPort || current.some((r) => r.port === plan.temporaryPort)))
@@ -476,7 +604,11 @@ export class PortManeuverService {
         targets,
         label: next ? (plan.mode === "restore" ? "restore-original-port" : "move-to-destination") : "move-to-temporary-port",
       });
-      for (const target of targets) current.find((r) => recordKey(r) === recordKey(target))!.port = target.port;
+      for (const target of targets)
+        Object.assign(
+          current.find((r) => recordKey(r) === recordKey(target))!,
+          target
+        );
     }
     throw fail("Não foi possível ordenar a manobra com segurança.");
   }
@@ -503,8 +635,7 @@ export class PortManeuverService {
       const validateAll = async () => {
         for (const r of expected) {
           const current = record(r.kind, await this.apiRecord(r));
-          if (current.boxId !== r.boxId || current.port !== r.port)
-            throw fail("Uma porta mudou desde a revisão. Nenhum próximo passo será enviado.");
+          if (!samePosition(current, r)) throw fail("Uma porta mudou desde a revisão. Nenhum próximo passo será enviado.");
         }
       };
       await validateAll();
@@ -518,26 +649,36 @@ export class PortManeuverService {
         for (const wanted of targets.filter((r) => r.loginId === loginId)) {
           const r = expected.find((e) => recordKey(e) === recordKey(wanted))!,
             current = await this.apiRecord(r);
-          const currentPort = num(current[portKey(r.kind)]);
-          // IXC may mirror the login's port onto its ONU. Accept only this exact planned side effect.
-          if (num(current.id_caixa_ftth) !== r.boxId || (currentPort !== r.port && currentPort !== wanted.port))
+          const position = record(r.kind, current);
+          // IXC may mirror the planned login binding onto its ONU. Accept only the exact reviewed positions.
+          const mirroredOnu =
+            r.kind === "onu" &&
+            position.boxId === wanted.boxId &&
+            position.port === wanted.port &&
+            [r.projectId, wanted.projectId].includes(position.projectId);
+          if (!samePosition(position, r) && !samePosition(position, wanted) && !mirroredOnu)
             throw fail("O vínculo mudou durante a gravação. Confira a operação antes de continuar.");
-          if (currentPort !== wanted.port) {
+          if (!samePosition(position, wanted)) {
             await checkAccess();
             await this.store.renew(token, keys);
             await this.collision(plan);
-            const payload = { ...fields(r.kind, current), id_caixa_ftth: String(wanted.boxId), [portKey(r.kind)]: String(wanted.port) };
+            const payload = {
+              ...fields(r.kind, current),
+              id_caixa_ftth: String(wanted.boxId),
+              [portKey(r.kind)]: String(wanted.port),
+              ...(wanted.projectId !== undefined ? { id_projeto: String(wanted.projectId) } : {}),
+            };
             uncertain = true;
             if (r.kind === "login") await this.api.updateLogin(r.id, payload);
             else await this.api.update(r.id, payload);
             changed = true;
             const verified = record(r.kind, await this.apiRecord(r));
-            if (verified.boxId !== wanted.boxId || verified.port !== wanted.port)
-              throw fail("O IXC não confirmou a porta gravada. Consulte antes de repetir.");
+            if (!samePosition(verified, wanted)) throw fail("O IXC não confirmou a porta gravada. Consulte antes de repetir.");
             uncertain = false;
           }
           r.port = wanted.port;
           r.boxId = wanted.boxId;
+          if (wanted.projectId !== undefined) r.projectId = wanted.projectId;
           await checkpoint();
         }
       };
@@ -549,9 +690,11 @@ export class PortManeuverService {
         message:
           plan.mode === "restore"
             ? "Portas originais restauradas e conferidas no IXC."
-            : plan.loginOnly
-              ? "Porta do login atualizada e conferida no IXC. O cadastro da ONU não foi alterado."
-              : "Manobra concluída. As portas dos logins e ONUs vinculadas foram conferidas no IXC.",
+            : plan.boxes
+              ? "Transferência concluída. Caixa, porta e projeto da ONU foram conferidos no IXC. A mudança física deve acompanhar o cadastro."
+              : plan.loginOnly
+                ? "Porta do login atualizada e conferida no IXC. O cadastro da ONU não foi alterado."
+                : "Manobra concluída. As portas dos logins e ONUs vinculadas foram conferidas no IXC.",
         onuId: null,
         step: "complete",
       };

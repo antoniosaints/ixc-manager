@@ -7,7 +7,7 @@ import { toast } from "../notifications/toast";
 import RecordDetailDialog from "./RecordDetailDialog.vue";
 import LoginPortAction from "./LoginPortAction.vue";
 const props = defineProps<{ loginId: number; login: string | null; scope: LoginToolScope }>();
-const emit = defineEmits<{ completed: [port?: number] }>();
+const emit = defineEmits<{ completed: [port?: number]; transferred: [destination: { boxId: number; boxName: string; port: number }] }>();
 const auth = useAuthStore(),
   preparing = ref(false),
   busy = ref(false),
@@ -92,6 +92,13 @@ function close() {
 <template>
   <div class="flex flex-wrap items-center justify-end gap-2">
     <LoginPortAction :login-id="loginId" :disabled="preparing || busy" @completed="(port) => emit('completed', port)" />
+    <LoginPortAction
+      :login-id="loginId"
+      :disabled="preparing || busy"
+      box-transfer
+      @transferred="(destination) => emit('transferred', destination)"
+      @completed="emit('completed')"
+    />
     <button
       v-for="action in actions.filter((a) => auth.can(a.permission))"
       :key="action.id"

@@ -27,6 +27,7 @@ import { useLiveQuery } from "../composables/useLiveQuery";
 import { providerAnalytics, type AnalyticsSection, type PortfolioMode, type PortfolioYear } from "../providerAnalyticsApi";
 import RecordQuickLink from "../components/RecordQuickLink.vue";
 import ProviderAnalyticsChart from "../components/ProviderAnalyticsChart.vue";
+import ProviderAnalyticsLoading from "../components/ProviderAnalyticsLoading.vue";
 import ProviderPortfolioEvolution from "../components/ProviderPortfolioEvolution.vue";
 import { formatConsulted } from "../upgradesApi";
 const auth = useAuthStore(),
@@ -387,9 +388,7 @@ const hasReady = computed(() => sections.some(([key]) => data.value?.[key].statu
       </div>
       <p v-if="validation" class="mt-2 text-sm text-red-600" role="alert">{{ validation }}</p>
     </form>
-    <div v-if="loading" class="panel analytics-state" role="status">
-      <RefreshCw class="h-5 w-5 animate-spin" aria-hidden="true" />Consultando os indicadores do provedor…
-    </div>
+    <ProviderAnalyticsLoading v-if="loading" />
     <div v-else-if="error" class="panel analytics-state" role="alert">
       <CircleAlert class="h-5 w-5" aria-hidden="true" /><span>{{ error }}</span
       ><button class="button-secondary" @click="reload">Tentar novamente</button>

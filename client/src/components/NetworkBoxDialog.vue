@@ -26,6 +26,7 @@ const emit = defineEmits<{ close: [] }>();
 const auth = useAuthStore();
 const mapOpen = ref(false);
 const maneuverOpen = ref(false);
+const boxTransfer = ref(false);
 const boxDialog = ref<InstanceType<typeof RecordDetailDialog>>();
 const loginDialog = ref<InstanceType<typeof RecordDetailDialog>>();
 const form = reactive({
@@ -168,9 +169,24 @@ const statusLabel = (status: string) => (status === "online" ? "Online" : status
           type="button"
           class="button-secondary"
           :disabled="loading"
-          @click="maneuverOpen = true"
+          @click="
+            boxTransfer = false;
+            maneuverOpen = true;
+          "
         >
           <ArrowLeftRight class="h-3.5 w-3.5" aria-hidden="true" />Manobra de portas
+        </button>
+        <button
+          v-if="auth.can('network.ports.manage') && auth.can('network.logins.view') && data?.box.active"
+          type="button"
+          class="button-secondary"
+          :disabled="loading"
+          @click="
+            boxTransfer = true;
+            maneuverOpen = true;
+          "
+        >
+          <ArrowLeftRight class="h-3.5 w-3.5" aria-hidden="true" />Manobra de caixa
         </button>
         <button v-if="data?.box.coordinates" type="button" class="button-secondary" @click="mapOpen = true">
           <MapPin class="h-3.5 w-3.5" aria-hidden="true" />Ver no mapa
@@ -398,6 +414,7 @@ const statusLabel = (status: string) => (status === "online" ? "Online" : status
             :login="selectedLogin.login"
             :scope="{ module: 'network', boxId }"
             @completed="reload"
+            @transferred="selectedLogin = null"
         /></template>
         <LoginSignalCard
           v-if="selectedLogin.technology?.kind !== 'radio'"
@@ -453,6 +470,7 @@ const statusLabel = (status: string) => (status === "online" ? "Online" : status
     v-if="maneuverOpen && auth.can('network.ports.manage') && auth.can('network.logins.view')"
     :box-id="boxId"
     :box-name="data?.box.name ?? boxName"
+    :box-transfer="boxTransfer"
     @close="maneuverOpen = false"
     @completed="reload"
   />

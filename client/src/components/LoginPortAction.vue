@@ -5,8 +5,8 @@ import { useAuthStore } from "../stores/auth";
 import { portManeuverApi } from "../portManeuverApi";
 import { toast } from "../notifications/toast";
 import PortManeuverDialog from "./PortManeuverDialog.vue";
-const props = defineProps<{ loginId: number; disabled?: boolean }>();
-const emit = defineEmits<{ completed: [port?: number] }>();
+const props = defineProps<{ loginId: number; disabled?: boolean; boxTransfer?: boolean }>();
+const emit = defineEmits<{ completed: [port?: number]; transferred: [destination: { boxId: number; boxName: string; port: number }] }>();
 const auth = useAuthStore();
 const allowed = computed(() => ["network.boxes.view", "network.logins.view", "network.ports.manage"].every((p) => auth.can(p)));
 const loading = ref(false),
@@ -30,15 +30,23 @@ async function open() {
       class="h-3.5 w-3.5"
       :class="{ 'animate-spin': loading }"
       aria-hidden="true"
-    />Mudar porta
+    />{{ boxTransfer ? "Mudar caixa" : "Mudar porta" }}
   </button>
   <PortManeuverDialog
     v-if="context && allowed"
     :box-id="context.boxId"
     :box-name="context.boxName"
     :initial-login-id="loginId"
-    login-only
+    :login-only="!boxTransfer"
+    :box-transfer="boxTransfer"
     @close="context = null"
-    @completed="(ports) => emit('completed', ports.find((p) => p.id === loginId)?.port)"
+    @completed="
+      (ports) => {
+        const moved = ports.find((p) => p.id === loginId);
+        if (boxTransfer && moved?.boxId)
+          emit('transferred', { boxId: moved.boxId, boxName: moved.boxName ?? `CTO #${moved.boxId}`, port: moved.port });
+        emit('completed', boxTransfer ? undefined : ports.find((p) => p.id === loginId)?.port);
+      }
+    "
   />
 </template>

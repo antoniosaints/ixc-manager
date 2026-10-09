@@ -40,11 +40,16 @@ watch(
   () => props.login.id,
   () => {
     changedPort.value = null;
+    changedBox.value = null;
     liveConnection.value = null;
   }
 );
+const changedBox = ref<{ boxId: number; boxName: string; port: number } | null>(null);
 const login = computed(() => ({
   ...(liveConnection.value ? applyConnectionUpdate(props.login, liveConnection.value) : props.login),
+  ...(changedBox.value
+    ? { ftthBoxId: changedBox.value.boxId, ftthBoxName: changedBox.value.boxName, ftthPort: String(changedBox.value.port) }
+    : {}),
   ...(changedPort.value !== null ? { ftthPort: String(changedPort.value), ftthBoxSource: "login" as const } : {}),
 }));
 function actionCompleted(port?: number) {
@@ -186,7 +191,20 @@ function keyboard(e: KeyboardEvent) {
           </button>
         </div>
       </div>
-      <div class="ml-auto"><LoginActions :login-id="login.id" :login="login.login" :scope="toolScope" @completed="actionCompleted" /></div>
+      <div class="ml-auto">
+        <LoginActions
+          :login-id="login.id"
+          :login="login.login"
+          :scope="toolScope"
+          @completed="actionCompleted"
+          @transferred="
+            (destination) => {
+              changedBox = destination;
+              changedPort = destination.port;
+            }
+          "
+        />
+      </div>
     </div>
     <div :id="`login-panel-${module}-${login.id}`" role="tabpanel" :aria-labelledby="`login-${module}-${login.id}-${tab}`" tabindex="0">
       <p class="mb-3 text-[11px] text-slate-500">{{ tabs.find((item) => item.id === tab)?.help }}</p>

@@ -63,6 +63,9 @@ function fixture() {
     INSERT INTO cliente_contrato VALUES(50,40),(51,41);
     INSERT INTO radusuarios VALUES(60,'a@example.test',40,50,20,1,'S','F','SERIAL60',0,'PRIVATE_PASSWORD','L','MAC60',7),(61,'b@example.test',41,51,20,2,'S','F','SERIAL61',0,'PRIVATE_PASSWORD','L','MAC61',7),(62,'c@example.test',41,51,21,1,'S','F',NULL,0,'PRIVATE_PASSWORD','L','MAC62',7);
     INSERT INTO radpop_radio_cliente_fibra VALUES(90,60,50,20,1,1,'SERIAL60','SERIAL60','N','N','A','1-2-3',7,10),(91,61,51,20,2,1,'SERIAL61','SERIAL61','N','N','A','1-2-4',7,10);`);
+  sql.exec(
+    "ALTER TABLE rad_caixa_ftth ADD COLUMN id_projeto INTEGER DEFAULT 1; ALTER TABLE radpop_radio_cliente_fibra ADD COLUMN id_projeto INTEGER DEFAULT 1; UPDATE rad_caixa_ftth SET id_projeto=2 WHERE id=21;"
+  );
   const select = vi.fn(async (q: any) => {
     assertReadQuery(q);
     return sql.prepare(q.sql).all(...q.params);
@@ -91,8 +94,8 @@ function fixture() {
       )
         throw new OnuCommandError(false);
       sql
-        .prepare("UPDATE radpop_radio_cliente_fibra SET id_caixa_ftth=?,porta_ftth=? WHERE id=?")
-        .run(Number(payload.id_caixa_ftth), Number(payload.porta_ftth), id);
+        .prepare("UPDATE radpop_radio_cliente_fibra SET id_caixa_ftth=?,porta_ftth=?,id_projeto=? WHERE id=?")
+        .run(Number(payload.id_caixa_ftth), Number(payload.porta_ftth), Number(payload.id_projeto), id);
       return { type: "success" };
     }),
   };
@@ -473,6 +476,210 @@ describe("Manobra de portas na mesma CTO", () => {
       sql.close();
     }
   });
+  it("transfere caixa, porta e projeto com ONU, preserva OLT e permite o mesmo número de porta", async () => {
+    const { sql, service, api, store } = fixture();
+    try {
+      // A mesma porta pode ser usada em duas CTOs diferentes.
+      sql.exec("UPDATE radusuarios SET ftth_porta=4 WHERE id=60; UPDATE radpop_radio_cliente_fibra SET porta_ftth=4 WHERE id=90");
+      const plan = await service.prepare(2, 20, { loginId: 60, targetBoxId: 21, targetPort: 4 });
+      expect(plan.review).toMatchObject({ boxTransfer: true, logins: [{ fromBoxId: 20, toBoxId: 21, fromPort: 4, toPort: 4 }] });
+      const result = await service.execute(2, plan.token, 20, access);
+      expect(result.state).toBe("success");
+      expect(sql.prepare("SELECT id_caixa_ftth,ftth_porta FROM radusuarios WHERE id=60").get()).toMatchObject({
+        id_caixa_ftth: 21,
+        ftth_porta: 4,
+      });
+      expect(
+        sql.prepare("SELECT id_caixa_ftth,porta_ftth,id_projeto,id_transmissor FROM radpop_radio_cliente_fibra WHERE id=90").get()
+      ).toMatchObject({ id_caixa_ftth: 21, porta_ftth: 4, id_projeto: 2, id_transmissor: 1 });
+      expect(api.updateLogin.mock.calls[0]![1]).toMatchObject({ id_caixa_ftth: "21", ftth_porta: "4", senha: "PRIVATE_PASSWORD" });
+      expect(api.update.mock.calls[0]![1]).toMatchObject({ id_caixa_ftth: "21", porta_ftth: "4", id_projeto: "2", ponid: "1-2-3" });
+      expect(JSON.stringify(plan)).not.toContain("PRIVATE_PASSWORD");
+      expect((await service.execute(2, plan.token, 20, access)).state).toBe("success");
+      expect(api.updateLogin).toHaveBeenCalledTimes(1);
+      expect(store.locks.size).toBe(0);
+    } finally {
+      sql.close();
+    }
+  });
+  it("transfere login sem ONU, busca destinos por nome/ID e recusa OLT diferente", async () => {
+    const { sql, service, api } = fixture();
+    try {
+      sql.exec("DELETE FROM radpop_radio_cliente_fibra WHERE id=90");
+      expect((await service.destinations(20, "B")).items.map((b) => b.id)).toEqual([21]);
+      expect((await service.destinations(20, "21")).items.map((b) => b.id)).toEqual([21]);
+      expect((await service.destinations(20, "%")).items).toEqual([]);
+      const plan = await service.prepare(2, 20, { loginId: 60, targetBoxId: 21, targetPort: 2 });
+      expect((await service.execute(2, plan.token, 20, access)).state).toBe("success");
+      expect(api.update).not.toHaveBeenCalled();
+      sql.exec("UPDATE rad_caixa_ftth SET id_transmissor=2 WHERE id=20");
+      await expect(service.prepare(2, 21, { loginId: 60, targetBoxId: 20, targetPort: 1 })).rejects.toThrow("reautorização");
+    } finally {
+      sql.close();
+    }
+  });
+  it("revalida a capacidade, reserva e ocupação da CTO de destino antes de escrever", async () => {
+    const { sql, service, api } = fixture();
+    try {
+      await expect(service.prepare(2, 20, { loginId: 60, targetBoxId: 21, targetPort: 1 })).rejects.toThrow("porta livre");
+      await expect(service.prepare(2, 20, { loginId: 60, targetBoxId: 20, targetPort: 3 })).rejects.toThrow("outra CTO");
+      expect(portManeuverInput.safeParse({ loginId: 60, targetBoxId: 21, targetPort: 1, swapLoginId: 62 }).success).toBe(false);
+      expect(portManeuverInput.safeParse({ loginId: 60, targetBoxId: 21, targetPort: 2, loginOnly: true }).success).toBe(false);
+      for (const mutation of [
+        "INSERT INTO reserva_rede_neutra VALUES(1,'21',2,NULL)",
+        "INSERT INTO radusuarios(id,id_caixa_ftth,ftth_porta) VALUES(63,21,2)",
+        "UPDATE rad_caixa_ftth SET capacidade=1 WHERE id=21",
+        "UPDATE rad_caixa_ftth SET id_projeto=3 WHERE id=21",
+        "UPDATE rad_caixa_ftth SET status='I' WHERE id=21",
+      ]) {
+        const plan = await service.prepare(2, 20, { loginId: 60, targetBoxId: 21, targetPort: 2 });
+        sql.exec(mutation);
+        expect((await service.execute(2, plan.token, 20, access)).state).toBe("rejected");
+        expect(api.updateLogin).not.toHaveBeenCalled();
+        sql.exec(
+          "DELETE FROM reserva_rede_neutra; DELETE FROM radusuarios WHERE id=63; UPDATE rad_caixa_ftth SET status='A',capacidade=8,id_projeto=2 WHERE id=21"
+        );
+      }
+    } finally {
+      sql.close();
+    }
+  });
+  it("reserva as duas CTOs e recupera falha entre login e ONU sem usar porta zero", async () => {
+    const { sql, service, api, store } = fixture();
+    try {
+      const plan = await service.prepare(2, 20, { loginId: 60, targetBoxId: 21, targetPort: 2 });
+      store.locks.set("box:21", randomUUID());
+      await expect(service.execute(2, plan.token, 20, access)).rejects.toBeInstanceOf(OnuBusyError);
+      expect(api.updateLogin).not.toHaveBeenCalled();
+      store.locks.clear();
+      api.update.mockRejectedValueOnce(new OnuCommandError(false));
+      expect((await service.execute(2, plan.token, 20, access)).state).toBe("partial");
+      const recovery = await service.prepareRecovery(2, plan.token, 20);
+      expect(recovery.review.logins[0]).toMatchObject({ fromBoxId: 21, toBoxId: 20 });
+      expect((await service.execute(2, recovery.token, 20, access)).state).toBe("success");
+      expect(sql.prepare("SELECT id_caixa_ftth,ftth_porta FROM radusuarios WHERE id=60").get()).toMatchObject({
+        id_caixa_ftth: 20,
+        ftth_porta: 1,
+      });
+      expect(sql.prepare("SELECT id_caixa_ftth,porta_ftth,id_projeto FROM radpop_radio_cliente_fibra WHERE id=90").get()).toMatchObject({
+        id_caixa_ftth: 20,
+        porta_ftth: 1,
+        id_projeto: 1,
+      });
+      expect(api.updateLogin.mock.calls.every(([, p]) => Number(p.ftth_porta) > 0)).toBe(true);
+    } finally {
+      sql.close();
+    }
+  });
+  it("confere resposta perdida entre caixas e impede recuperação sobre uma porta original ocupada", async () => {
+    const { sql, service, api, store } = fixture();
+    try {
+      const update = api.update.getMockImplementation()!;
+      api.update.mockImplementationOnce(async (id, payload) => {
+        await update(id, payload);
+        throw new OnuCommandError(true);
+      });
+      const plan = await service.prepare(2, 20, { loginId: 60, targetBoxId: 21, targetPort: 2 });
+      expect((await service.execute(2, plan.token, 20, access)).state).toBe("unknown");
+      expect((await service.status(2, plan.token, 20)).state).toBe("success");
+      expect(api.update).toHaveBeenCalledTimes(1);
+      store.operations.get(plan.token)!.state = "partial";
+      sql.exec("INSERT INTO radusuarios(id,id_caixa_ftth,ftth_porta) VALUES(63,20,1)");
+      await expect(service.prepareRecovery(2, plan.token, 20)).rejects.toThrow("ocupada");
+    } finally {
+      sql.close();
+    }
+  });
+  it("completa o projeto quando o IXC espelha somente caixa e porta na ONU", async () => {
+    const { sql, service, api } = fixture();
+    try {
+      const update = api.updateLogin.getMockImplementation()!;
+      api.updateLogin.mockImplementationOnce(async (id, payload) => {
+        await update(id, payload);
+        sql
+          .prepare("UPDATE radpop_radio_cliente_fibra SET id_caixa_ftth=?,porta_ftth=? WHERE id_login=?")
+          .run(Number(payload.id_caixa_ftth), Number(payload.ftth_porta), id);
+        return { type: "success" };
+      });
+      const plan = await service.prepare(2, 20, { loginId: 60, targetBoxId: 21, targetPort: 2 });
+      expect((await service.execute(2, plan.token, 20, access)).state).toBe("success");
+      expect(api.update).toHaveBeenCalledTimes(1);
+      expect(sql.prepare("SELECT id_projeto FROM radpop_radio_cliente_fibra WHERE id=90").get()!.id_projeto).toBe(2);
+    } finally {
+      sql.close();
+    }
+  });
+  it("restaura projeto e caixa após falha com espelhamento parcial e preserva planos antigos", async () => {
+    const { sql, service, api, store } = fixture();
+    try {
+      const update = api.updateLogin.getMockImplementation()!;
+      api.updateLogin.mockImplementationOnce(async (id, payload) => {
+        await update(id, payload);
+        sql
+          .prepare("UPDATE radpop_radio_cliente_fibra SET id_caixa_ftth=?,porta_ftth=? WHERE id_login=?")
+          .run(Number(payload.id_caixa_ftth), Number(payload.ftth_porta), id);
+        throw new OnuCommandError(true);
+      });
+      const plan = await service.prepare(2, 20, { loginId: 60, targetBoxId: 21, targetPort: 2 });
+      expect((await service.execute(2, plan.token, 20, access)).state).toBe("unknown");
+      store.locks.clear();
+      const recovery = await service.prepareRecovery(2, plan.token, 20);
+      expect((await service.execute(2, recovery.token, 20, access)).state).toBe("success");
+      expect(sql.prepare("SELECT id_caixa_ftth,porta_ftth,id_projeto FROM radpop_radio_cliente_fibra WHERE id=90").get()).toMatchObject({
+        id_caixa_ftth: 20,
+        porta_ftth: 1,
+        id_projeto: 1,
+      });
+      const old = await service.prepare(2, 20, { loginId: 60, targetPort: 3 });
+      for (const records of [
+        store.operations.get(old.token)!.plan.before,
+        store.operations.get(old.token)!.plan.target,
+        store.operations.get(old.token)!.plan.original,
+      ])
+        for (const record of records as any[]) {
+          delete record.projectId;
+          delete record.identityProject;
+        }
+      expect((await service.execute(2, old.token, 20, access)).state).toBe("success");
+    } finally {
+      sql.close();
+    }
+  });
+  it("interrompe um espelhamento fora da porta/caixa revisada", async () => {
+    const { sql, service, api } = fixture();
+    try {
+      const update = api.updateLogin.getMockImplementation()!;
+      api.updateLogin.mockImplementationOnce(async (id, payload) => {
+        await update(id, payload);
+        sql.exec("UPDATE radpop_radio_cliente_fibra SET id_caixa_ftth=21,porta_ftth=7 WHERE id=90");
+        return { type: "success" };
+      });
+      const plan = await service.prepare(2, 20, { loginId: 60, targetBoxId: 21, targetPort: 2 });
+      expect((await service.execute(2, plan.token, 20, access)).state).toBe("partial");
+      expect(api.update).not.toHaveBeenCalled();
+      await expect(service.prepareRecovery(2, plan.token, 20)).rejects.toThrow("fora da manobra");
+    } finally {
+      sql.close();
+    }
+  });
+  it("aceita espelhamento da caixa/porta/projeto da ONU, mas bloqueia efeitos fora do destino revisado", async () => {
+    const { sql, service, api } = fixture();
+    try {
+      const update = api.updateLogin.getMockImplementation()!;
+      api.updateLogin.mockImplementationOnce(async (id, payload) => {
+        await update(id, payload);
+        sql
+          .prepare("UPDATE radpop_radio_cliente_fibra SET id_caixa_ftth=?,porta_ftth=?,id_projeto=2 WHERE id_login=?")
+          .run(Number(payload.id_caixa_ftth), Number(payload.ftth_porta), id);
+        return { type: "success" };
+      });
+      const plan = await service.prepare(2, 20, { loginId: 60, targetBoxId: 21, targetPort: 2 });
+      expect((await service.execute(2, plan.token, 20, access)).state).toBe("success");
+      expect(api.update).not.toHaveBeenCalled();
+    } finally {
+      sql.close();
+    }
+  });
 });
 it("rotas exigem permissão específica e confirmação literal antes de acessar o serviço", async () => {
   const app = Fastify();
@@ -488,6 +695,7 @@ it("rotas exigem permissão específica e confirmação literal antes de acessar
       { method: "GET", url: "/logins/60" },
       { method: "GET", url: "/boxes/20/login-ports/60" },
       { method: "GET", url: "/boxes/20" },
+      { method: "GET", url: "/boxes/20/destinations" },
       { method: "POST", url: "/boxes/20/plans", payload: { loginId: 60, targetPort: 3 } },
       { method: "GET", url: `/boxes/20/operations/${token}` },
       { method: "POST", url: `/boxes/20/operations/${token}/execute`, payload: { confirmed: true } },

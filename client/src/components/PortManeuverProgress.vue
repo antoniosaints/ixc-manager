@@ -1,13 +1,17 @@
 <script setup lang="ts">
-defineProps<{ fromPort: number; toPort: number; restoring?: boolean }>();
+defineProps<{ fromPort: number; toPort: number; restoring?: boolean; fromBoxId?: number; toBoxId?: number }>();
 </script>
 
 <template>
   <div class="my-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-center" role="status" aria-live="polite">
     <p class="text-sm font-bold text-ink">{{ restoring ? "Restaurando portas…" : "Executando manobra…" }}</p>
     <svg class="mx-auto block w-full max-w-md" viewBox="0 0 480 225" fill="none" aria-hidden="true" focusable="false">
-      <text x="150" y="22" text-anchor="middle" class="port-label">{{ fromPort ? `Porta ${fromPort}` : "Sem porta" }}</text>
-      <text x="330" y="22" text-anchor="middle" class="port-label">Porta {{ toPort }}</text>
+      <text v-if="fromBoxId" x="150" y="12" text-anchor="middle" class="port-label">CTO #{{ fromBoxId }}</text>
+      <text v-if="toBoxId" x="330" y="12" text-anchor="middle" class="port-label">CTO #{{ toBoxId }}</text>
+      <text x="150" :y="fromBoxId ? 29 : 22" text-anchor="middle" class="port-label">
+        {{ fromPort ? `Porta ${fromPort}` : "Sem porta" }}
+      </text>
+      <text x="330" :y="toBoxId ? 29 : 22" text-anchor="middle" class="port-label">Porta {{ toPort }}</text>
       <rect x="44" y="34" width="392" height="78" rx="14" class="patch-panel" />
       <rect x="52" y="42" width="376" height="62" rx="9" stroke="currentColor" stroke-opacity=".12" />
       <g v-for="x in [66, 414]" :key="x" stroke="currentColor" stroke-opacity=".3">
