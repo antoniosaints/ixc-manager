@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { timelineTarget, type CustomerTimelineEvent } from "../customerTimeline";
+import { canOpenRecord } from "../recordNavigation";
+import { financialTitleStatus } from "../financialTitleStatus";
 import CustomerQuickLinks from "../components/CustomerQuickLinks.vue";
 import RecordQuickLink from "../components/RecordQuickLink.vue";
 import { toast } from "../notifications/toast";
@@ -40,7 +43,10 @@ const props = defineProps<{ id: string }>();
 const route = useRoute();
 const auth = useAuthStore();
 const data = ref<any>();
-const timeline = ref<any[]>([]);
+const timeline = ref<CustomerTimelineEvent[]>([]);
+const timelineItems = computed(() =>
+  timeline.value.map((event) => ({ ...event, target: timelineTarget(event, Number(props.id), auth.can) }))
+);
 const error = ref("");
 const activeTab = ref<"risk" | "history" | "service">("risk");
 const recalculating = ref(false);
@@ -509,13 +515,28 @@ const eventTone = (type: string) =>
           {{ timelineError }} <button @click="loadProfile" class="underline">Recarregar</button>
         </p>
         <ol v-else class="max-h-[480px] divide-y divide-slate-100 overflow-y-auto">
-          <li v-for="(event, index) in timeline" :key="index" class="flex items-start gap-2 px-4 py-2.5">
+          <li v-for="(event, index) in timelineItems" :key="index" class="flex items-start gap-2 px-4 py-2.5">
             <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="eventTone(event.type)" />
             <div class="min-w-0">
               <p class="text-[10px] font-medium text-slate-500">
                 {{ new Date(event.at).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) }} · {{ eventLabel(event.type) }}
               </p>
-              <p class="mt-0.5 break-words text-xs leading-5">{{ event.description }}</p>
+              <div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5">
+                <RecordQuickLink
+                  v-if="event.target && canOpenRecord(event.target, auth.can)"
+                  :target="event.target"
+                  :label="`Ver ${event.description}`"
+                  >{{ event.description }}</RecordQuickLink
+                >
+                <span v-else class="break-words">{{ event.description }}</span>
+                <span
+                  v-if="event.type === 'FINANCIAL'"
+                  class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold leading-4"
+                  :class="financialTitleStatus(event.status).tone"
+                  :title="`Status IXC: ${event.status || 'não informado'}`"
+                  >{{ financialTitleStatus(event.status).label }}</span
+                >
+              </div>
             </div>
           </li>
           <li v-if="!timeline.length" class="p-5 text-xs text-slate-500">Sem eventos disponíveis.</li>

@@ -3,6 +3,7 @@ export type RecordTarget =
   | { kind: "contract"; id: number; module: "support" | "upgrades" }
   | { kind: "login"; id: number; contractId: number }
   | { kind: "orders" | "tickets"; id: number; customerId: number }
+  | { kind: "receivable"; id: number; customerId: number }
   | { kind: "collection"; id: number };
 const validId = (id: number) => Number.isSafeInteger(id) && id > 0;
 export function canOpenRecord(target: RecordTarget, can: (permission: string) => boolean): boolean {
@@ -17,6 +18,8 @@ export function canOpenRecord(target: RecordTarget, can: (permission: string) =>
     case "orders":
     case "tickets":
       return validId(target.customerId) && can("support.customer.view") && can(`support.${target.kind}.view`);
+    case "receivable":
+      return validId(target.customerId) && can("finance.dashboard.view");
     case "collection":
       return can("collections.customer.view");
   }

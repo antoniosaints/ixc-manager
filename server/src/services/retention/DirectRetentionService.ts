@@ -467,17 +467,25 @@ export class DirectRetentionService {
             w.today,
           ],
           sql: `SELECT * FROM (
-        SELECT data_criacao at,'TICKET' type,CONCAT('Atendimento ',CHAR(35),id,': ',COALESCE(titulo,'')) description FROM su_ticket WHERE id_cliente=? AND data_criacao>=? AND data_criacao<=?
-        UNION ALL SELECT data_abertura,'SERVICE_ORDER',CONCAT('OS ',CHAR(35),id) FROM su_oss_chamado WHERE id_cliente=? AND data_abertura>=? AND data_abertura<=?
-        UNION ALL SELECT data_vencimento,'FINANCIAL',CONCAT('Título ',CHAR(35),id,': ',status) FROM fn_areceber WHERE id_cliente=? AND data_vencimento>=? AND data_vencimento<=?
-        UNION ALL SELECT DATE(a.acctstarttime),'CONNECTION',CONCAT(COUNT(*),' sessões Radius') FROM radacct a WHERE a.username IN (SELECT login FROM radusuarios WHERE id_cliente=? AND ativo='S') AND a.acctstarttime>=? AND a.acctstarttime<=? GROUP BY DATE(a.acctstarttime)
-        UNION ALL SELECT data_ativacao,'CONTRACT',CONCAT('Ativação do contrato ',CHAR(35),id) FROM cliente_contrato WHERE id_cliente=? AND data_ativacao>=? AND data_ativacao<=?
-        UNION ALL SELECT data_cancelamento,'CONTRACT',CONCAT('Cancelamento do contrato ',CHAR(35),id) FROM cliente_contrato WHERE id_cliente=? AND data_cancelamento>=? AND data_cancelamento<=?
+        SELECT data_criacao at,'TICKET' type,CONCAT('Atendimento ',CHAR(35),id,': ',COALESCE(titulo,'')) description,id recordId,NULL status FROM su_ticket WHERE id_cliente=? AND data_criacao>=? AND data_criacao<=?
+        UNION ALL SELECT data_abertura,'SERVICE_ORDER',CONCAT('OS ',CHAR(35),id),id,NULL FROM su_oss_chamado WHERE id_cliente=? AND data_abertura>=? AND data_abertura<=?
+        UNION ALL SELECT data_vencimento,'FINANCIAL',CONCAT('Título ',CHAR(35),id),id,status FROM fn_areceber WHERE id_cliente=? AND data_vencimento>=? AND data_vencimento<=?
+        UNION ALL SELECT DATE(a.acctstarttime),'CONNECTION',CONCAT(COUNT(*),' sessões Radius'),NULL,NULL FROM radacct a WHERE a.username IN (SELECT login FROM radusuarios WHERE id_cliente=? AND ativo='S') AND a.acctstarttime>=? AND a.acctstarttime<=? GROUP BY DATE(a.acctstarttime)
+        UNION ALL SELECT data_ativacao,'CONTRACT',CONCAT('Ativação do contrato ',CHAR(35),id),id,NULL FROM cliente_contrato WHERE id_cliente=? AND data_ativacao>=? AND data_ativacao<=?
+        UNION ALL SELECT data_cancelamento,'CONTRACT',CONCAT('Cancelamento do contrato ',CHAR(35),id),id,NULL FROM cliente_contrato WHERE id_cliente=? AND data_cancelamento>=? AND data_cancelamento<=?
       ) events ORDER BY at DESC LIMIT 300`,
         }),
       signal
     );
-    return { events };
+    return {
+      events: events.map((event) => ({
+        at: String(event.at),
+        type: String(event.type),
+        description: String(event.description),
+        recordId: Number.isSafeInteger(Number(event.recordId)) && Number(event.recordId) > 0 ? Number(event.recordId) : null,
+        status: event.status == null ? null : String(event.status).trim().toUpperCase(),
+      })),
+    };
   }
   async analytics(dimension: string, signal?: AbortSignal) {
     if (dimension === "cancellation-reasons") {

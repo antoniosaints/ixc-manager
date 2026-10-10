@@ -262,7 +262,11 @@ describe("Churn direto sem processamento em segundo plano", () => {
       expect(profile?.connection.find((row) => row.date === "2026-10-01")?.disconnects).toBe(20);
       expect(profile?.usage[1]?.download_consumption).toBe(25);
       expect(profile?.notes).toEqual([]);
-      expect((await service.timeline(1)).events.some((e) => e.type === "CONNECTION")).toBe(true);
+      const history = (await service.timeline(1)).events;
+      expect(history.find((e) => e.type === "CONNECTION")).toMatchObject({ recordId: null, status: null });
+      expect(history.find((e) => e.type === "FINANCIAL" && e.recordId === 6)).toMatchObject({ description: "Título #6", status: "R" });
+      expect(history.find((e) => e.type === "SERVICE_ORDER")).toMatchObject({ recordId: expect.any(Number), status: null });
+      expect(history.find((e) => e.type === "TICKET")).toMatchObject({ recordId: expect.any(Number), status: null });
     } finally {
       sql.close();
     }

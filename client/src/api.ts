@@ -1,3 +1,4 @@
+import type { CustomerTimelineEvent } from "./customerTimeline";
 import { apiFetch } from "./http";
 export type RiskLevel = "LOW" | "ATTENTION" | "MEDIUM" | "HIGH" | "CRITICAL";
 export interface RetentionSummary {
@@ -142,7 +143,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contractId, critical }),
     }),
-  timeline: (id: number, signal?: AbortSignal) => request<{ events: any[] }>(`/customers/${id}/timeline`, { signal }),
+  timeline: (id: number, signal?: AbortSignal) => request<{ events: CustomerTimelineEvent[] }>(`/customers/${id}/timeline`, { signal }),
   analytics: (dimension: string, signal?: AbortSignal) => request<{ items: any[] }>(`/analytics/${dimension}`, { signal }),
   recalculate: (id?: number) =>
     request<{ status: "completed"; source: "database" }>(id ? `/customers/${id}/recalculate` : `/recalculate`, { method: "POST" }),

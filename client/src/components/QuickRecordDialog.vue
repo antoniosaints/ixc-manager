@@ -12,6 +12,7 @@ const Contract = defineAsyncComponent(() => import("./SupportContractDetail.vue"
 const Login = defineAsyncComponent(() => import("./QuickLoginDetail.vue"));
 const Case = defineAsyncComponent(() => import("./SupportCaseDetail.vue"));
 const Collection = defineAsyncComponent(() => import("./CollectionCustomerDetail.vue"));
+const Receivable = defineAsyncComponent(() => import("./FinanceTitleDetail.vue"));
 const loginName = ref("");
 const loginTechnology = ref<UpgradeLogin["technology"]>();
 function loginLoaded(name: string, technology: UpgradeLogin["technology"]) {
@@ -27,10 +28,19 @@ watch(
 );
 const title = computed(
   () =>
-    `${{ box: "Caixa", contract: "Contrato", login: "Login", orders: "Ordem de serviço", tickets: "Atendimento", collection: "Cobranças do cliente" }[props.target.kind]} #${props.target.id}${props.target.kind === "login" && loginName.value ? ` · ${loginName.value}` : ""}`
+    `${{ box: "Caixa", contract: "Contrato", login: "Login", orders: "Ordem de serviço", tickets: "Atendimento", collection: "Cobranças do cliente", receivable: "Título" }[props.target.kind]} #${props.target.id}${props.target.kind === "login" && loginName.value ? ` · ${loginName.value}` : ""}`
 );
 const icon = computed(
-  () => ({ box: Network, contract: FileText, login: Network, orders: Wrench, tickets: Headset, collection: ReceiptText })[props.target.kind]
+  () =>
+    ({
+      box: Network,
+      contract: FileText,
+      login: Network,
+      orders: Wrench,
+      tickets: Headset,
+      collection: ReceiptText,
+      receivable: ReceiptText,
+    })[props.target.kind]
 );
 </script>
 <template>
@@ -40,7 +50,15 @@ const icon = computed(
     :title="title"
     subtitle="Acesso rápido · Feche para voltar ao registro anterior"
     :icon="icon"
-    :module="target.kind === 'collection' ? 'collections' : target.kind === 'contract' ? target.module : 'support'"
+    :module="
+      target.kind === 'receivable'
+        ? 'finance'
+        : target.kind === 'collection'
+          ? 'collections'
+          : target.kind === 'contract'
+            ? target.module
+            : 'support'
+    "
     @close="emit('close')"
   >
     <template #title-badge
@@ -60,6 +78,7 @@ const icon = computed(
       :kind="target.kind"
       :case-id="target.id"
     />
+    <Receivable v-else-if="target.kind === 'receivable'" :title-id="target.id" :customer-id="target.customerId" />
     <Collection v-else-if="target.kind === 'collection'" :customer-id="target.id" :filters="{ scope: 'open', status: 'all' }" />
   </RecordDetailDialog>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { financialTitleStatus } from "../financialTitleStatus";
 import { computed, ref, watch } from "vue";
 import { Banknote, ArrowUpRight, Info, RefreshCw } from "lucide-vue-next";
 import RecordDetailDialog from "./RecordDetailDialog.vue";
@@ -25,8 +26,7 @@ watch(query, reload);
 const pages = computed(() => Math.max(1, Math.ceil((data.value?.total ?? 0) / limit.value)));
 const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const date = (value: string | null) => (value ? value.split("-").reverse().join("/") : "Não informado");
-const status = (value: string | null, kind: string) =>
-  ({ A: "Aberto", P: "Parcial", R: kind === "receivable" ? "Recebido" : "Pago", C: "Cancelado" })[value as "A"] ?? value ?? "Não informado";
+const status = (value: string | null, kind: "receivable" | "payable") => financialTitleStatus(value, kind).label;
 </script>
 <template>
   <RecordDetailDialog

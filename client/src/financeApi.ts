@@ -68,7 +68,7 @@ export function financeBanks(params: URLSearchParams, signal?: AbortSignal): Pro
   return readFinance("banks", params, signal);
 }
 async function readFinance<T>(
-  path: "dashboard" | "banks" | "pending" | "options" | "account-details",
+  path: "dashboard" | "banks" | "pending" | "options" | "account-details" | `receivables/${number}`,
   params: URLSearchParams,
   signal?: AbortSignal
 ): Promise<T> {
@@ -189,4 +189,31 @@ export function financeOptions(signal?: AbortSignal): Promise<{
   truncated: boolean;
 }> {
   return readFinance("options", new URLSearchParams(), signal);
+}
+
+export interface FinanceTitle {
+  id: number;
+  customerId: number;
+  customerName: string | null;
+  contractId: number | null;
+  contractName: string | null;
+  status: string | null;
+  document: string | null;
+  issuedDate: string | null;
+  dueDate: string | null;
+  paymentDate: string | null;
+  cancelledDate: string | null;
+  amount: number | null;
+  received: number | null;
+  balance: number | null;
+  reversed: boolean;
+  renegotiated: boolean;
+  accountId: number | null;
+  accountName: string | null;
+  branchId: number | null;
+  branchName: string | null;
+  queriedAt: string;
+}
+export function financeTitle(id: number, customerId: number, signal?: AbortSignal): Promise<FinanceTitle> {
+  return readFinance(`receivables/${id}`, new URLSearchParams({ customerId: String(customerId) }), signal);
 }
