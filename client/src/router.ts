@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from "vue-router";
+import NetworkPonView from "./views/NetworkPonView.vue";
 import NetworkView from "./views/NetworkView.vue";
 import NetworkOnusView from "./views/NetworkOnusView.vue";
 import NetworkLoginsView from "./views/NetworkLoginsView.vue";
@@ -22,6 +23,7 @@ import SettingsView from "./views/SettingsView.vue";
 import AppearanceView from "./views/AppearanceView.vue";
 import PermissionProfilesView from "./views/PermissionProfilesView.vue";
 import SupportView from "./views/SupportView.vue";
+import SupportContractsView from "./views/SupportContractsView.vue";
 import SupportOrdersView from "./views/SupportOrdersView.vue";
 import SupportCustomerView from "./views/SupportCustomerView.vue";
 import NoAccessView from "./views/NoAccessView.vue";
@@ -30,6 +32,7 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/overview", component: ProviderAnalyticsView, meta: { module: "analytics", permission: "analytics.dashboard.view" } },
+    { path: "/network/pon", component: NetworkPonView, meta: { module: "network", permission: "network.pon.view" } },
     { path: "/network", component: NetworkView, meta: { module: "network", permission: "network.boxes.view" } },
     { path: "/network/onus", component: NetworkOnusView, meta: { module: "network", permission: "network.onus.view" } },
     { path: "/network/logins", component: NetworkLoginsView, meta: { module: "network", permission: "network.logins.list" } },
@@ -41,6 +44,7 @@ const router = createRouter({
       meta: { module: "finance", financeView: "list", permission: "finance.dashboard.view" },
     },
     { path: "/support", component: SupportView, meta: { module: "support", permission: "support.customers.view" } },
+    { path: "/support/contracts", component: SupportContractsView, meta: { module: "support", permission: "support.contract.view" } },
     { path: "/support/orders", component: SupportOrdersView, meta: { module: "support", permission: "support.orders.view" } },
     { path: "/support/customers/:id", component: SupportCustomerView, meta: { module: "support", permission: "support.customer.view" } },
     { path: "/support/contracts/:id", component: UpgradeContractView, meta: { module: "support", permission: "support.contract.view" } },

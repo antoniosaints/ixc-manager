@@ -1,5 +1,6 @@
 export const permissionCatalog = [
   { key: "analytics.dashboard.view", group: "Analytics", label: "Ver painel de gestão (dados conforme permissões dos módulos)" },
+  { key: "network.pon.view", group: "Rede", label: "Monitorar PONs, vínculos ONU/CTO/login e sessões RADIUS em tempo real" },
   { key: "network.logins.disconnect", group: "Rede", label: "Desconectar login no IXC (interrompe a sessão do cliente)" },
   { key: "network.logins.clearMac", group: "Rede", label: "Limpar MAC do login no IXC" },
   {
@@ -120,13 +121,14 @@ export const accessPresets: { key: string; name: string; description: string; pe
       "network.logins.view",
       "network.logins.list",
       "network.onus.view",
+      "network.pon.view",
     ],
   },
   {
     key: "NETWORK",
     name: "Rede",
     description: "Caixas, lista geral de logins, dados técnicos e monitor em tempo real.",
-    permissions: ["network.boxes.view", "network.logins.view", "network.logins.list", "network.onus.view"],
+    permissions: ["network.boxes.view", "network.logins.view", "network.logins.list", "network.onus.view", "network.pon.view"],
   },
   {
     key: "NETWORK_PORTS",

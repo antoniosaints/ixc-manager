@@ -1,3 +1,4 @@
+import { ContractItemsService } from "../services/contracts/ContractItemsService.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AuthService } from "../services/AuthService.js";
@@ -7,6 +8,7 @@ import { SupportCustomerService } from "../services/support/SupportCustomerServi
 import { directRetention } from "../services/retention/DirectRetentionService.js";
 import { SupportOrderFilesService } from "../services/support/SupportOrderFilesService.js";
 import { SupportOrdersService, supportOrdersQuery } from "../services/support/SupportOrdersService.js";
+import { SupportContractsService, supportContractsQuery } from "../services/support/SupportContractsService.js";
 
 const pagination = z.object({
   page: z.coerce.number().int().min(1).max(100_000).default(1),
@@ -24,11 +26,14 @@ export const supportCustomerQuery = pagination.extend({
 const ids = z.object({ id: z.coerce.number().int().positive(), loginId: z.coerce.number().int().positive().optional() });
 export async function supportRoutes(app: FastifyInstance) {
   const auth = new AuthService();
+  const contractItems = new ContractItemsService();
   const service = new SupportService();
   const caseService = new SupportCaseService();
   const customerService = new SupportCustomerService();
   const orderFiles = new SupportOrderFilesService();
   const orders = new SupportOrdersService();
+  const contracts = new SupportContractsService();
+  app.addHook("onClose", () => contracts.close());
   app.addHook("onClose", () => orders.close());
   app.addHook("onClose", () => service.close());
   app.addHook("onClose", () => customerService.close());
@@ -61,6 +66,22 @@ export async function supportRoutes(app: FastifyInstance) {
     await auth.requirePermission(request, "support.customers.view");
     return service.customers(supportCustomerQuery.parse(request.query));
   });
+  for (const path of ["/contracts", "/contracts/filters"] as const) {
+    app.get(path, options, async (request, reply) => {
+      await auth.requirePermission(request, "support.contract.view");
+      const query = path === "/contracts" ? supportContractsQuery.parse(request.query) : null;
+      const controller = new AbortController();
+      const disconnected = () => {
+        if (!reply.raw.writableEnded) controller.abort();
+      };
+      reply.raw.on("close", disconnected);
+      try {
+        return query ? await contracts.list(query, controller.signal) : await contracts.filters(controller.signal);
+      } finally {
+        reply.raw.off("close", disconnected);
+      }
+    });
+  }
   for (const path of ["/orders", "/orders/filters"] as const) {
     app.get(path, options, async (request, reply) => {
       await auth.requirePermission(request, "support.orders.view");
@@ -167,6 +188,25 @@ export async function supportRoutes(app: FastifyInstance) {
           .header("Content-Disposition", `attachment; filename*=UTF-8''${name}`)
           .type(file.contentType)
           .send(file.buffer);
+      } finally {
+        reply.raw.off("close", disconnected);
+      }
+    });
+  }
+  for (const section of ["products", "additional-services"] as const) {
+    app.get(`/contracts/:id/${section}`, options, async (request, reply) => {
+      await auth.requirePermission(request, "support.contract.view");
+      const { id } = z.object({ id: z.coerce.number().int().positive().safe() }).parse(request.params);
+      const page = pagination.parse(request.query);
+      const controller = new AbortController();
+      const disconnected = () => {
+        if (!reply.raw.writableEnded) controller.abort();
+      };
+      reply.raw.on("close", disconnected);
+      try {
+        return section === "products"
+          ? await contractItems.products(id, page, false, controller.signal)
+          : await contractItems.additionalServices(id, page, false, controller.signal);
       } finally {
         reply.raw.off("close", disconnected);
       }

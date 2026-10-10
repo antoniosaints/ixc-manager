@@ -54,25 +54,35 @@ const modules = computed(() => [
         },
       ]
     : []),
-  ...(auth.can("support.customers.view") || auth.can("support.orders.view")
+  ...(auth.can("support.customers.view") || auth.can("support.contract.view") || auth.can("support.orders.view")
     ? [
         {
           id: "support",
           label: "Suporte",
-          description: "Clientes e ordens de serviço",
+          description: "Clientes, contratos e ordens de serviço",
           icon: Headset,
-          to: auth.can("support.customers.view") ? "/support" : "/support/orders",
+          to: auth.can("support.customers.view")
+            ? "/support"
+            : auth.can("support.contract.view")
+              ? "/support/contracts"
+              : "/support/orders",
         },
       ]
     : []),
-  ...(auth.can("network.boxes.view") || auth.can("network.logins.list") || auth.can("network.onus.view")
+  ...(auth.can("network.boxes.view") || auth.can("network.logins.list") || auth.can("network.onus.view") || auth.can("network.pon.view")
     ? [
         {
           id: "network",
           label: "Rede",
-          description: "Caixas, logins e ONUs",
+          description: "Caixas, logins, ONUs e PONs",
           icon: Network,
-          to: auth.can("network.boxes.view") ? "/network" : auth.can("network.logins.list") ? "/network/logins" : "/network/onus",
+          to: auth.can("network.boxes.view")
+            ? "/network"
+            : auth.can("network.logins.list")
+              ? "/network/logins"
+              : auth.can("network.onus.view")
+                ? "/network/onus"
+                : "/network/pon",
         },
       ]
     : []),

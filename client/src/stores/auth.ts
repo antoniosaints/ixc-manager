@@ -31,10 +31,12 @@ export const useAuthStore = defineStore("auth", {
       if (this.can("upgrades.opportunities.view")) return "/upgrades";
       if (this.can("upgrades.plans.view")) return "/upgrades/plans";
       if (this.can("support.customers.view")) return "/support";
+      if (this.can("support.contract.view")) return "/support/contracts";
       if (this.can("support.orders.view")) return "/support/orders";
       if (this.can("network.boxes.view")) return "/network";
       if (this.can("network.logins.list")) return "/network/logins";
       if (this.can("network.onus.view")) return "/network/onus";
+      if (this.can("network.pon.view")) return "/network/pon";
       if (this.can("finance.dashboard.view")) return "/finance";
       if (this.can("collections.customers.view")) return "/collections";
       if (this.can("churn.processes.view")) return "/sync";

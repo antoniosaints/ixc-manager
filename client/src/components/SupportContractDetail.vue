@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { FileText, Network, Package, RefreshCw, ArrowUpRight } from "lucide-vue-next";
+import { FileText, Network, Package, ListPlus, RefreshCw, ArrowUpRight } from "lucide-vue-next";
 import CustomerQuickLinks from "./CustomerQuickLinks.vue";
 import { upgradesApi } from "../upgradesApi";
 import { supportApi } from "../supportApi";
@@ -9,6 +9,7 @@ import { useAuthStore } from "../stores/auth";
 import { useLiveQuery } from "../composables/useLiveQuery";
 import ContractOverview from "./ContractOverview.vue";
 import ContractLogins from "./ContractLogins.vue";
+import ContractItemsTab from "./ContractItemsTab.vue";
 import SupportComodato from "./SupportComodato.vue";
 import LiveQueryState from "./LiveQueryState.vue";
 const props = withDefaults(defineProps<{ contractId: string; module?: "support" | "upgrades" }>(), { module: "support" });
@@ -19,6 +20,12 @@ const { data, loading, error, reload } = useLiveQuery((signal) =>
 );
 const tabs = computed(() => [
   { id: "overview", label: "Visão geral", icon: FileText },
+  ...(auth.can(`${props.module}.contract.view`)
+    ? [
+        { id: "products", label: "Produtos", icon: Package },
+        { id: "additional-services", label: "Serviços adicionais", icon: ListPlus },
+      ]
+    : []),
   ...(props.module === "support" && auth.can("support.logins.view") ? [{ id: "logins", label: "Logins", icon: Network }] : []),
   ...(props.module === "support" && auth.can("support.comodato.view") ? [{ id: "comodato", label: "Comodatos", icon: Package }] : []),
 ]);
@@ -73,6 +80,13 @@ function keyboard(e: KeyboardEvent) {
           v-if="data && !loading && !error"
           :contract="data.contract"
       /></template>
+      <ContractItemsTab
+        v-else-if="(tab === 'products' || tab === 'additional-services') && auth.can(`${module}.contract.view`)"
+        :key="`${module}-${contractId}-${tab}`"
+        :contract-id="contractId"
+        :module="module"
+        :kind="tab"
+      />
       <ContractLogins v-else-if="tab === 'logins' && auth.can('support.logins.view')" :contract-id="contractId" />
       <SupportComodato v-else-if="tab === 'comodato' && auth.can('support.comodato.view')" :contract-id="contractId" />
     </div>

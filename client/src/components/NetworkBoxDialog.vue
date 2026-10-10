@@ -188,6 +188,13 @@ const statusLabel = (status: string) => (status === "online" ? "Online" : status
         >
           <ArrowLeftRight class="h-3.5 w-3.5" aria-hidden="true" />Manobra de caixa
         </button>
+        <RouterLink
+          v-if="auth.can('network.pon.view') && data?.box.transmitterId"
+          :to="{ path: '/network/pon', query: { oltId: String(data.box.transmitterId), boxId: String(props.boxId) } }"
+          class="button-secondary"
+          @click="emit('close')"
+          ><Network class="h-3.5 w-3.5" aria-hidden="true" />Monitor PON</RouterLink
+        >
         <button v-if="data?.box.coordinates" type="button" class="button-secondary" @click="mapOpen = true">
           <MapPin class="h-3.5 w-3.5" aria-hidden="true" />Ver no mapa
         </button>

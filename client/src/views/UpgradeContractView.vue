@@ -1,7 +1,19 @@
 <script setup lang="ts">
 import CustomerQuickLinks from "../components/CustomerQuickLinks.vue";
 import { toast } from "../notifications/toast";
-import { FileText, Network, UserRound, ArrowLeft, ArrowUpRight, Copy, Phone, RefreshCw, LayoutDashboard, Package } from "lucide-vue-next";
+import {
+  FileText,
+  Network,
+  UserRound,
+  ArrowLeft,
+  ArrowUpRight,
+  Copy,
+  Phone,
+  RefreshCw,
+  LayoutDashboard,
+  Package,
+  ListPlus,
+} from "lucide-vue-next";
 
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -10,6 +22,7 @@ import { useAuthStore } from "../stores/auth";
 import { useLiveQuery } from "../composables/useLiveQuery";
 import { upgradesApi, formatConsulted, internetStatus, type UpgradeLogin, type LivePage } from "../upgradesApi";
 import { supportApi, contractStatus } from "../supportApi";
+import ContractItemsTab from "../components/ContractItemsTab.vue";
 import SupportComodato from "../components/SupportComodato.vue";
 import LiveQueryState from "../components/LiveQueryState.vue";
 import PermanenceBadge from "../components/PermanenceBadge.vue";
@@ -22,6 +35,7 @@ const route = useRoute();
 const router = useRouter();
 const module = computed(() => (route.meta.module === "support" ? "support" : "upgrades"));
 const isSupport = computed(() => module.value === "support");
+const fromContracts = computed(() => isSupport.value && route.query.from === "contracts");
 const technicalApi = computed(() => (isSupport.value ? supportApi : upgradesApi));
 const can = (permission: string) => auth.can(`${module.value}.${permission}`);
 const contractId = computed(() => String(route.params.id));
@@ -36,6 +50,12 @@ function chooseTab(id: string) {
 const tabs = computed(() => [
   { id: "overview", label: "Visão geral", icon: LayoutDashboard },
   { id: "contacts", label: "Contatos", icon: Phone, count: contract.value?.contacts.length },
+  ...(can("contract.view")
+    ? [
+        { id: "products", label: "Produtos", icon: Package },
+        { id: "additional-services", label: "Serviços adicionais", icon: ListPlus },
+      ]
+    : []),
   ...(isSupport.value && can("comodato.view") ? [{ id: "comodato", label: "Comodatos", icon: Package }] : []),
   ...(can("logins.view") ? [{ id: "logins", label: "Logins e equipamentos", icon: Network }] : []),
 ]);
@@ -165,18 +185,20 @@ const yesNo = (value: boolean | null) => (value === null ? "Não informado" : va
   <RouterLink
     :to="
       isSupport
-        ? contract && auth.can('support.customer.view')
-          ? `/support/customers/${contract.customerId}`
-          : auth.can('support.customers.view')
-            ? '/support'
-            : auth.home
+        ? fromContracts
+          ? '/support/contracts'
+          : contract && auth.can('support.customer.view')
+            ? `/support/customers/${contract.customerId}`
+            : auth.can('support.customers.view')
+              ? '/support'
+              : auth.home
         : auth.can('upgrades.opportunities.view')
           ? '/upgrades'
           : auth.home
     "
     class="mb-4 inline-flex items-center gap-2 text-xs font-medium text-slate-500 hover:text-violet-700"
     ><ArrowLeft class="h-4 w-4" aria-hidden="true" focusable="false" />{{
-      isSupport ? "Voltar ao cliente" : "Voltar às oportunidades"
+      isSupport ? (fromContracts ? "Voltar aos contratos" : "Voltar ao cliente") : "Voltar às oportunidades"
     }}</RouterLink
   >
   <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -326,6 +348,13 @@ const yesNo = (value: boolean | null) => (value === null ? "Não informado" : va
           </div>
         </div>
       </template>
+      <ContractItemsTab
+        v-else-if="(tab === 'products' || tab === 'additional-services') && can('contract.view')"
+        :key="`${module}-${contractId}-${tab}`"
+        :contract-id="contractId"
+        :module="module"
+        :kind="tab"
+      />
       <SupportComodato v-else-if="isSupport && tab === 'comodato' && can('comodato.view')" :key="contractId" :contract-id="contractId" />
       <template v-else-if="technical && can('logins.view')">
         <section class="panel mb-4 overflow-hidden">

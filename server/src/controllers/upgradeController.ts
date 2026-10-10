@@ -1,3 +1,4 @@
+import { ContractItemsService } from "../services/contracts/ContractItemsService.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AuthService } from "../services/AuthService.js";
@@ -40,6 +41,7 @@ const exportBody = z
 
 export async function upgradeRoutes(app: FastifyInstance) {
   const auth = new AuthService();
+  const contractItems = new ContractItemsService();
   const service = new UpgradeService();
   const settings = new SettingsService();
   app.addHook("onClose", () => service.close());
@@ -85,6 +87,25 @@ export async function upgradeRoutes(app: FastifyInstance) {
       .header("Content-Disposition", `attachment; filename="upgrades-${distribution.referenceDate}.pdf"`)
       .send(pdf);
   });
+  for (const section of ["products", "additional-services"] as const) {
+    app.get(`/contracts/:id/${section}`, options, async (request, reply) => {
+      await auth.requirePermission(request, "upgrades.contract.view");
+      const { id } = z.object({ id: z.coerce.number().int().positive().safe() }).parse(request.params);
+      const page = pagination.parse(request.query);
+      const controller = new AbortController();
+      const disconnected = () => {
+        if (!reply.raw.writableEnded) controller.abort();
+      };
+      reply.raw.on("close", disconnected);
+      try {
+        return section === "products"
+          ? await contractItems.products(id, page, true, controller.signal)
+          : await contractItems.additionalServices(id, page, true, controller.signal);
+      } finally {
+        reply.raw.off("close", disconnected);
+      }
+    });
+  }
   app.get("/contracts/:id", options, async (request) => {
     await auth.requirePermission(request, "upgrades.contract.view");
     return service.contract(z.object({ id: z.coerce.number().int().positive() }).parse(request.params).id);

@@ -88,6 +88,25 @@ export interface SupportContract {
   expiresAt: string | null;
   address: string | null;
 }
+export interface SupportContractListItem {
+  id: number;
+  customerId: number | null;
+  customerName: string | null;
+  customerActive: boolean | null;
+  document: string | null;
+  phone: string | null;
+  name: string | null;
+  status: string;
+  internetStatus: string;
+  suspended: boolean | null;
+  planId: number | null;
+  planName: string | null;
+  branchId: number | null;
+  branch: string | null;
+  city: string | null;
+  neighborhood: string | null;
+  activatedAt: string | null;
+}
 export interface SupportCase {
   id: number;
   protocol: string | null;
@@ -163,6 +182,9 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return response.json();
 }
 export const supportApi = {
+  contractList: (params: URLSearchParams, signal?: AbortSignal) => get<LivePage<SupportContractListItem>>(`/contracts?${params}`, signal),
+  contractFilters: (signal?: AbortSignal) =>
+    get<{ branches: { id: number; name: string }[]; plans: { id: number; name: string }[] }>("/contracts/filters", signal),
   orders: (params: URLSearchParams, signal?: AbortSignal) =>
     get<
       LivePage<SupportOrderListItem> & {

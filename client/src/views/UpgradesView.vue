@@ -25,6 +25,7 @@ import { upgradesApi, formatDate, formatConsulted, internetStatus } from "../upg
 import { useLiveQuery } from "../composables/useLiveQuery";
 import LiveQueryState from "../components/LiveQueryState.vue";
 import UpgradeExportDialog from "../components/UpgradeExportDialog.vue";
+import TechnicalStatus from "../components/TechnicalStatus.vue";
 import type { UpgradeContract } from "../upgradesApi";
 
 const route = useRoute();
@@ -439,8 +440,17 @@ watch(
                   >
                 </div>
               </td>
-              <td class="px-3 py-1.5 text-[10px] text-slate-500">
-                {{ contract.suspended ? "Suspenso" : internetStatus(contract.internetStatus) }}
+              <td class="whitespace-nowrap px-3 py-1.5">
+                <TechnicalStatus
+                  :label="contract.suspended ? 'Suspenso' : internetStatus(contract.internetStatus)"
+                  :tone="
+                    contract.suspended || ['CA', 'CM', 'FA', 'D'].includes(contract.internetStatus)
+                      ? 'danger'
+                      : contract.internetStatus === 'A'
+                        ? 'success'
+                        : 'neutral'
+                  "
+                />
               </td>
               <td v-if="auth.can('upgrades.contract.view')" class="pr-4 py-1.5">
                 <RouterLink

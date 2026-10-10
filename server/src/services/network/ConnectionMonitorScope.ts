@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ponScope, ponBoxScope } from "./PonMonitorService.js";
 const id = z.number().int().positive().safe();
 const ids = z
   .array(id)
@@ -8,6 +9,8 @@ const ids = z
 export const networkSubscription = z.object({ type: z.literal("auth"), token: z.string().min(1).max(256), boxIds: ids }).strict();
 const credentials = { type: z.literal("auth"), token: z.string().min(1).max(256) };
 export const connectionSubscription = z.union([
+  ponScope.extend(credentials),
+  ponBoxScope.extend(credentials),
   networkSubscription.transform(({ boxIds, ...rest }) => ({ ...rest, scope: "boxes" as const, boxIds })),
   z.object({ ...credentials, scope: z.literal("customer"), module: z.literal("support"), customerId: id, loginIds: ids }).strict(),
   z.object({ ...credentials, scope: z.literal("login"), module: z.enum(["support", "upgrades"]), contractId: id, loginId: id }).strict(),
@@ -15,6 +18,8 @@ export const connectionSubscription = z.union([
   z.object({ ...credentials, scope: z.literal("login-list"), loginIds: ids }).strict(),
 ]);
 export type ConnectionScope =
+  | Omit<Extract<z.infer<typeof connectionSubscription>, { scope: "pon-box" }>, "type" | "token">
+  | Omit<Extract<z.infer<typeof connectionSubscription>, { scope: "pon" }>, "type" | "token">
   | Omit<Extract<z.infer<typeof connectionSubscription>, { scope: "boxes" }>, "type" | "token">
   | Omit<Extract<z.infer<typeof connectionSubscription>, { scope: "customer" }>, "type" | "token">
   | Omit<Extract<z.infer<typeof connectionSubscription>, { scope: "login" }>, "type" | "token">
@@ -22,6 +27,8 @@ export type ConnectionScope =
   | Omit<Extract<z.infer<typeof connectionSubscription>, { scope: "login-list" }>, "type" | "token">;
 /** Channel keys never contain tokens. Each shape carries only its authorized record scope. */
 export function subscriptionScope(input: z.infer<typeof connectionSubscription>): ConnectionScope {
+  if (input.scope === "pon-box") return { scope: input.scope, boxId: input.boxId };
+  if (input.scope === "pon") return { scope: input.scope, oltId: input.oltId, pon: input.pon };
   if (input.scope === "boxes") return { scope: input.scope, boxIds: input.boxIds };
   if (input.scope === "login-list") return { scope: input.scope, loginIds: input.loginIds };
   if (input.scope === "customer")
@@ -30,6 +37,7 @@ export function subscriptionScope(input: z.infer<typeof connectionSubscription>)
   return { scope: input.scope, boxId: input.boxId, loginId: input.loginId };
 }
 export function connectionPermissions(scope: ConnectionScope) {
+  if (scope.scope === "pon" || scope.scope === "pon-box") return ["network.pon.view"] as const;
   if (scope.scope === "login-list") return ["network.logins.list"] as const;
   if (scope.scope === "customer") return ["support.customer.view", "support.logins.view"] as const;
   if (scope.scope === "login")

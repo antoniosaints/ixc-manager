@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { IxcReadDatabase, IxcReadQuery } from "../../integrations/ixc/database/IxcReadDatabase.js";
 import { connectionSubscription, subscriptionScope, type ConnectionScope } from "./ConnectionMonitorScope.js";
 import { connectedLoginSql, connectionIp, connectionStatus } from "./LoginConnection.js";
+import { PonMonitorService, ponChanges, type PonSnapshot } from "./PonMonitorService.js";
 export { networkSubscription, connectionPermissions } from "./ConnectionMonitorScope.js";
 
 export interface ConnectionState {
@@ -18,6 +19,7 @@ export function networkMonitorSql(boxIds: number[]): IxcReadQuery {
   return connectionMonitorSql(scope);
 }
 export function connectionMonitorSql(scope: ConnectionScope): IxcReadQuery {
+  if (scope.scope === "pon" || scope.scope === "pon-box") throw new Error("Use a consulta de PON.");
   let where: string;
   let params: number[];
   if (scope.scope === "boxes") {
@@ -89,6 +91,7 @@ interface Channel {
   scope: ConnectionScope;
   peers: Set<Peer>;
   previous?: ConnectionState[];
+  previousPon?: PonSnapshot;
   checkedAt?: string;
   timer?: ReturnType<typeof setTimeout>;
   controller: AbortController;
@@ -99,12 +102,14 @@ interface Channel {
 export class NetworkMonitor {
   private peers = new Set<Peer>();
   private channels = new Map<string, Channel>();
+  private ponService: PonMonitorService;
   private heartbeat: ReturnType<typeof setInterval>;
   constructor(
     private db: Pick<IxcReadDatabase, "withSnapshot">,
     private authorize: (token: string, scope: ConnectionScope) => Promise<{ id: number }>,
     private intervalMs = 1000
   ) {
+    this.ponService = new PonMonitorService(db);
     this.heartbeat = setInterval(() => {
       for (const peer of this.peers) {
         if (!peer.alive) peer.socket.terminate();
@@ -168,7 +173,10 @@ export class NetworkMonitor {
       }
       channel.peers.add(peer);
       peer.channel = channel;
-      if (channel.checkedAt) {
+      if (channel.checkedAt && channel.previousPon) {
+        this.send(peer, { type: "pon-state", checkedAt: channel.checkedAt, ...channel.previousPon, events: [], snapshot: true });
+        peer.initialized = true;
+      } else if (channel.checkedAt) {
         this.send(peer, {
           type: "state",
           checkedAt: channel.checkedAt,
@@ -207,6 +215,7 @@ export class NetworkMonitor {
   private async poll(channel: Channel) {
     if (channel.busy || !channel.peers.size || channel.controller.signal.aborted) return;
     channel.busy = true;
+    const started = Date.now();
     try {
       // Reload session and profile permissions on every tick; an open socket
       // must not retain access after logout, expiry or a permission revocation.
@@ -221,6 +230,24 @@ export class NetworkMonitor {
         })
       );
       if (!channel.peers.size || channel.controller.signal.aborted) return;
+      if (channel.scope.scope === "pon" || channel.scope.scope === "pon-box") {
+        const scope = channel.scope;
+        const current = await this.db.withSnapshot((s) => this.ponService.read(scope, s), channel.controller.signal);
+        const events = ponChanges(channel.previousPon, current);
+        channel.previousPon = current;
+        channel.checkedAt = new Date().toISOString();
+        for (const peer of channel.peers) {
+          this.send(peer, {
+            type: "pon-state",
+            checkedAt: channel.checkedAt,
+            ...current,
+            events: peer.initialized ? events : [],
+            snapshot: !peer.initialized,
+          });
+          peer.initialized = true;
+        }
+        return;
+      }
       const rows = await this.db.withSnapshot(
         (session) => session.select<ConnectionState>(connectionMonitorSql(channel.scope)),
         channel.controller.signal
@@ -255,10 +282,15 @@ export class NetworkMonitor {
     } finally {
       channel.busy = false;
       if (channel.peers.size && !channel.controller.signal.aborted) {
-        channel.timer = setTimeout(() => {
-          channel.timer = undefined;
-          void this.poll(channel);
-        }, this.intervalMs);
+        channel.timer = setTimeout(
+          () => {
+            channel.timer = undefined;
+            void this.poll(channel);
+          },
+          channel.scope.scope === "pon" || channel.scope.scope === "pon-box"
+            ? Math.max(50, this.intervalMs - (Date.now() - started))
+            : this.intervalMs
+        );
         channel.timer.unref();
       }
     }
@@ -275,6 +307,7 @@ export class NetworkMonitor {
       clearTimeout(channel.timer);
       channel.controller.abort();
       channel.previous = undefined;
+      channel.previousPon = undefined;
       this.channels.delete(channel.key);
     }
   }

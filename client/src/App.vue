@@ -17,6 +17,7 @@ import {
   Cable,
   Network,
   Wrench,
+  FileText,
 } from "lucide-vue-next";
 import { useAuthStore } from "./stores/auth";
 import AppSidebar from "./components/AppSidebar.vue";
@@ -105,7 +106,9 @@ const logout = async () => {
                   ? '/network'
                   : auth.can('network.logins.list')
                     ? '/network/logins'
-                    : '/network/onus'
+                    : auth.can('network.onus.view')
+                      ? '/network/onus'
+                      : '/network/pon'
                 : isCollections
                   ? '/collections'
                   : isFinance
@@ -115,9 +118,11 @@ const logout = async () => {
                       : isSupport
                         ? auth.can('support.customers.view')
                           ? '/support'
-                          : auth.can('support.orders.view')
-                            ? '/support/orders'
-                            : auth.home
+                          : auth.can('support.contract.view')
+                            ? '/support/contracts'
+                            : auth.can('support.orders.view')
+                              ? '/support/orders'
+                              : auth.home
                         : isUpgrades
                           ? auth.can('upgrades.opportunities.view')
                             ? '/upgrades'
@@ -198,6 +203,13 @@ const logout = async () => {
             :class="route.path === '/network/onus' ? 'network-nav-active' : ''"
             :aria-current="route.path === '/network/onus' ? 'page' : undefined"
             ><Cable class="mr-1 inline h-4 w-4" aria-hidden="true" />ONUs</RouterLink
+          ><RouterLink
+            v-if="auth.can('network.pon.view')"
+            to="/network/pon"
+            class="rounded-lg px-3 py-2"
+            :class="route.path === '/network/pon' ? 'network-nav-active' : ''"
+            :aria-current="route.path === '/network/pon' ? 'page' : undefined"
+            ><Network class="mr-1 inline h-4 w-4" aria-hidden="true" />Monitor PON</RouterLink
           ><button type="button" class="button-primary ml-2 !px-3 !py-2" @click="upgradesRefresh++">
             <RefreshCw class="h-4 w-4" aria-hidden="true" />Atualizar consulta
           </button>
@@ -257,9 +269,17 @@ const logout = async () => {
             v-if="auth.can('support.customers.view')"
             to="/support"
             class="rounded-lg px-3 py-2 hover:bg-slate-100"
-            :class="{ 'support-nav-active': route.path !== '/support/orders' }"
+            :class="{ 'support-nav-active': route.path === '/support' || route.path.startsWith('/support/customers/') }"
             ><Users class="mr-1 inline h-4 w-4" aria-hidden="true" focusable="false" />Clientes</RouterLink
           >
+          <RouterLink
+            v-if="auth.can('support.contract.view')"
+            to="/support/contracts"
+            class="rounded-lg px-3 py-2 hover:bg-slate-100"
+            :class="{ 'support-nav-active': route.path.startsWith('/support/contracts') }"
+          >
+            <FileText class="mr-1 inline h-4 w-4" aria-hidden="true" />Contratos
+          </RouterLink>
           <RouterLink
             v-if="auth.can('support.orders.view')"
             to="/support/orders"

@@ -1,4 +1,36 @@
 import { apiFetch } from "./http";
+export interface ContractProduct {
+  id: number;
+  productId: number | null;
+  planId: number | null;
+  type: string | null;
+  description: string | null;
+  source: "plan" | "contract";
+  quantity: number | null;
+  unitPrice: number | null;
+  gross: number | null;
+  discount: number | null;
+  surcharge: number | null;
+  untilDue: number | null;
+  net: number | null;
+  notes: string | null;
+}
+export interface ContractAdditionalService {
+  id: number;
+  productId: number | null;
+  description: string | null;
+  type: string | null;
+  quantity: number | null;
+  unitPrice: number | null;
+  total: number | null;
+  status: string | null;
+  recurring: boolean | null;
+  repetitions: number | null;
+  executions: number | null;
+  date: string | null;
+  validUntil: string | null;
+  lastExecutedAt: string | null;
+}
 export interface UpgradeContract {
   contractId: number;
   customerId: number;
@@ -180,6 +212,10 @@ export function createTechnicalApi(base: string) {
     return response.json();
   }
   return {
+    contractProducts: (id: string, params: URLSearchParams, signal?: AbortSignal) =>
+      getTechnical<LivePage<ContractProduct>>(`/contracts/${encodeURIComponent(id)}/products?${params}`, signal),
+    contractAdditionalServices: (id: string, params: URLSearchParams, signal?: AbortSignal) =>
+      getTechnical<LivePage<ContractAdditionalService>>(`/contracts/${encodeURIComponent(id)}/additional-services?${params}`, signal),
     contract: (id: string, signal?: AbortSignal) =>
       getTechnical<{ contract: UpgradeContractDetails; queriedAt: string; referenceDate: string }>(
         `/contracts/${encodeURIComponent(id)}`,

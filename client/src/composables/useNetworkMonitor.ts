@@ -1,6 +1,7 @@
 import { inject, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useAuthStore } from "../stores/auth";
 import { activeRecordDialogTarget, recordDialogPortal } from "./recordDialog";
+import type { PonState } from "../ponApi";
 import { apiWebSocketUrl } from "../http";
 
 export interface OfflineEvent {
@@ -14,6 +15,8 @@ export interface ConnectionUpdate extends OfflineEvent {
   ip: string | null;
 }
 export type ConnectionScope =
+  | { scope: "pon-box"; boxId: number }
+  | { scope: "pon"; oltId: number; pon: string }
   | { scope: "login-list"; loginIds: number[] }
   | { scope: "customer"; module: "support"; customerId: number; loginIds: number[] }
   | { scope: "login"; module: "support" | "upgrades"; contractId: number; loginId: number }
@@ -36,6 +39,7 @@ export function useNetworkMonitor(options: {
   refresh?: () => Promise<boolean>;
   offline?: (events: OfflineEvent[], total: number) => void;
   connections?: (updates: ConnectionUpdate[]) => void;
+  pon?: (update: PonState) => void;
 }) {
   const auth = useAuthStore();
   const ownerDialog = inject(recordDialogPortal, null);
@@ -66,13 +70,15 @@ export function useNetworkMonitor(options: {
     const scope = subscription();
     if (!scope) return false;
     const permissions =
-      "scope" in scope && scope.scope === "login-list"
-        ? ["network.logins.list"]
-        : "boxIds" in scope || scope.scope === "box-login"
-          ? ["network.boxes.view", "network.logins.view"]
-          : scope.scope === "customer"
-            ? ["support.customer.view", "support.logins.view"]
-            : [`${scope.module}.contract.view`, `${scope.module}.logins.view`];
+      "scope" in scope && (scope.scope === "pon" || scope.scope === "pon-box")
+        ? ["network.pon.view"]
+        : "scope" in scope && scope.scope === "login-list"
+          ? ["network.logins.list"]
+          : "boxIds" in scope || scope.scope === "box-login"
+            ? ["network.boxes.view", "network.logins.view"]
+            : scope.scope === "customer"
+              ? ["support.customer.view", "support.logins.view"]
+              : [`${scope.module}.contract.view`, `${scope.module}.logins.view`];
     return permissions.every((permission) => auth.can(permission));
   };
   function stop() {
@@ -130,6 +136,14 @@ export function useNetworkMonitor(options: {
       if (update.type === "unavailable") {
         state.value = "unavailable";
         message.value = update.message;
+        return;
+      }
+      if (update.type === "pon-state") {
+        state.value = "connected";
+        checkedAt.value = update.checkedAt;
+        message.value = "";
+        attempts = 0;
+        options.pon?.(update);
         return;
       }
       if (update.type !== "state") return;

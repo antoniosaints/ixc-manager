@@ -9,6 +9,7 @@ import { LoginSignalService } from "../services/upgrades/LoginSignalService.js";
 import { env } from "../config/env.js";
 import { NetworkLoginService, loginListQuery } from "../services/network/NetworkLoginService.js";
 import { onuRoutes } from "./onuController.js";
+import { PonMonitorService, ponQuery } from "../services/network/PonMonitorService.js";
 import { portManeuverRoutes } from "./portManeuverController.js";
 
 /** Reads remain separate from explicitly permissioned ONU operations. */
@@ -70,6 +71,20 @@ export async function networkRoutes(app: FastifyInstance) {
     },
     (socket) => monitor.attach(socket)
   );
+  app.get("/pon/options", { logLevel: "silent" }, async (request, reply) => {
+    await auth.requirePermission(request, "network.pon.view");
+    const controller = new AbortController();
+    const disconnected = () => {
+      if (!reply.raw.writableEnded) controller.abort();
+    };
+    reply.raw.on("close", disconnected);
+    try {
+      const q = ponQuery.parse(request.query);
+      return await new PonMonitorService(db).options(q.oltId, controller.signal, q.boxId);
+    } finally {
+      reply.raw.off("close", disconnected);
+    }
+  });
   for (const path of ["/logins", "/logins/filters", "/logins/:loginId", "/logins/:loginId/signal"] as const)
     app.get(path, { logLevel: "silent" }, async (request, reply) => {
       await auth.requirePermission(request, "network.logins.list", ...(path.includes(":loginId") ? ["network.logins.view" as const] : []));
