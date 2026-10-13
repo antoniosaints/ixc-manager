@@ -67,8 +67,9 @@ const icon = computed(
     <Contract v-if="target.kind === 'contract'" :contract-id="String(target.id)" :module="target.module" />
     <Login
       v-else-if="target.kind === 'login'"
-      :key="`${target.contractId}-${target.id}`"
+      :key="`${target.customerId ?? ''}-${target.contractId ?? ''}-${target.id}`"
       :contract-id="target.contractId"
+      :customer-id="target.customerId"
       :login-id="target.id"
       @loaded="loginLoaded"
     />

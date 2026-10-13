@@ -21,12 +21,13 @@ export default defineConfig({
       // Preserve the browser-facing Host for the backend's same-origin
       // WebSocket check. Rewriting it to :3000 rejects frontend origins.
       "/api/network/live": { target: backendTarget, changeOrigin: false, ws: true },
+      "/api/raffles": { target: backendTarget, changeOrigin: false, ws: true, timeout: 45000, proxyTimeout: 40000 },
       // SQL financial reads have individual server deadlines and can include
       // historical balances. Keep this rule before the general /api rule.
       "/api/finance": { target: backendTarget, changeOrigin: true, timeout: 90_000, proxyTimeout: 75_000 },
       // Direct Churn aggregates have a 45-second total deadline on the backend.
       "/api/retention": { target: backendTarget, changeOrigin: true, timeout: 65_000, proxyTimeout: 60_000 },
-      "^/api/support/customers/[0-9]+/analysis(?:\\?.*)?$": {
+      "^/api/support/customers/[0-9]+/(?:analysis|graph)(?:\\?.*)?$": {
         target: backendTarget,
         changeOrigin: true,
         timeout: 65_000,

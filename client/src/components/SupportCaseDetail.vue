@@ -190,8 +190,8 @@ function keyboard(e: KeyboardEvent) {
                   :label="`Ver contrato #${record.contractId}`"
                 />
                 <RecordQuickLink
-                  v-if="record.contractId && record.loginId"
-                  :target="{ kind: 'login', id: record.loginId, contractId: record.contractId }"
+                  v-if="record.loginId"
+                  :target="{ kind: 'login', id: record.loginId, customerId: Number(customerId) }"
                   :label="`Ver login #${record.loginId}`"
                 />
                 <RecordQuickLink

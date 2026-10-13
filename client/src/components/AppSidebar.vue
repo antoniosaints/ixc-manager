@@ -10,6 +10,7 @@ import {
   Banknote,
   ReceiptText,
   Network,
+  Trophy,
 } from "lucide-vue-next";
 import { useRoute } from "vue-router";
 import { useAuthStore } from "../stores/auth";
@@ -18,6 +19,9 @@ const auth = useAuthStore();
 const route = useRoute();
 // Register new modules here and identify their routes with meta.module.
 const modules = computed(() => [
+  ...(auth.can("raffles.view")
+    ? [{ id: "raffles", label: "Sorteios", description: "Eventos e prêmios para clientes", icon: Trophy, to: "/raffles" }]
+    : []),
   ...(auth.can("analytics.dashboard.view")
     ? [{ id: "analytics", label: "Analytics", description: "Gestão e prioridades do provedor", icon: LayoutDashboard, to: "/overview" }]
     : []),

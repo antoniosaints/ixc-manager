@@ -1,7 +1,8 @@
 export type RecordTarget =
   | { kind: "box"; id: number; name?: string }
   | { kind: "contract"; id: number; module: "support" | "upgrades" }
-  | { kind: "login"; id: number; contractId: number }
+  | { kind: "login"; id: number; contractId: number; customerId?: never }
+  | { kind: "login"; id: number; customerId: number; contractId?: never }
   | { kind: "orders" | "tickets"; id: number; customerId: number }
   | { kind: "receivable"; id: number; customerId: number }
   | { kind: "collection"; id: number };
@@ -14,7 +15,9 @@ export function canOpenRecord(target: RecordTarget, can: (permission: string) =>
     case "contract":
       return can(`${target.module}.contract.view`);
     case "login":
-      return validId(target.contractId) && can("support.contract.view") && can("support.logins.view");
+      return target.customerId !== undefined
+        ? validId(target.customerId) && can("support.customer.view") && can("support.logins.view")
+        : validId(target.contractId) && can("support.contract.view") && can("support.logins.view");
     case "orders":
     case "tickets":
       return validId(target.customerId) && can("support.customer.view") && can(`support.${target.kind}.view`);

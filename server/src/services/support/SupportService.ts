@@ -1,5 +1,6 @@
-import { ixcColumnOrder, type ColumnSortQuery } from "../../utils/columnSort.js";
+import { columnOrder, ixcColumnOrder, type ColumnSortQuery } from "../../utils/columnSort.js";
 import { IxcApiService, type IxcListRequest } from "../../integrations/ixc/IxcApiService.js";
+import { IxcReadDatabase, type IxcReadQuery } from "../../integrations/ixc/database/IxcReadDatabase.js";
 import { contactNumbers, loginDetails } from "../upgrades/UpgradeDetails.js";
 import { UpgradeService, dateOnly } from "../upgrades/UpgradeService.js";
 import { LoginNetworkService } from "../upgrades/LoginNetworkService.js";
@@ -22,18 +23,59 @@ const id = (value: unknown): number | null =>
 const flag = (value: unknown) => (text(value) === "S" ? true : text(value) === "N" ? false : null);
 const fail = (message: string, statusCode: number) => Object.assign(new Error(message), { statusCode });
 
+export function customerLocalitySql(query: CustomerQuery, customerIds: number[] | null) {
+  const conditions = ["c.id>0"];
+  const params: IxcReadQuery["params"] = [];
+  if (query.status !== "all") {
+    conditions.push("c.ativo=?");
+    params.push(query.status === "active" ? "S" : "N");
+  }
+  if (customerIds !== null) {
+    conditions.push(customerIds.length ? `c.id IN (${customerIds.map(() => "?").join(",")})` : "1=0");
+    params.push(...customerIds);
+  } else if (query.search) {
+    if (query.searchBy === "id") {
+      conditions.push("c.id=?");
+      params.push(Number(query.search));
+    } else {
+      conditions.push(`${query.searchBy === "address" ? "c.endereco" : "c.razao"} LIKE ? ESCAPE '!'`);
+      params.push(`%${query.search.replace(/[!%_]/g, (value) => `!${value}`)}%`);
+    }
+  }
+  const from = `FROM cliente c LEFT JOIN cidade city ON city.id=c.cidade WHERE ${conditions.join(" AND ")}`;
+  const neighborhood = "NULLIF(TRIM(c.bairro),'')";
+  const order = columnOrder(
+    query,
+    { city: "NULLIF(TRIM(city.nome),'')" },
+    "c.razao,c.id",
+    `(${neighborhood} IS NULL) ASC,${neighborhood} ${query.sortDirection === "desc" ? "DESC" : "ASC"},c.razao,c.id`
+  );
+  return {
+    count: { name: "support-customers-locality-count", sql: `SELECT COUNT(*) total ${from}`, params, timeoutSeconds: 5 },
+    list: {
+      name: "support-customers-locality-list",
+      sql: `SELECT c.id,c.razao,c.ativo,c.cnpj_cpf,c.telefone_celular,c.fone,c.cidade,c.bairro,c.endereco,c.numero,c.complemento,
+        NULLIF(TRIM(city.nome),'') cityName ${from} ORDER BY ${order} LIMIT ? OFFSET ?`,
+      params: [...params, query.limit, (query.page - 1) * query.limit],
+      timeoutSeconds: 5,
+    },
+  } satisfies Record<string, IxcReadQuery>;
+}
+
 /** Request-scoped IXC queries only: no persistence, queues or customer cache. */
 export class SupportService {
   readonly technical: UpgradeService;
   constructor(
     private readonly ixc: Reader = new IxcApiService({ timeout: 10_000, attempts: 2 }),
     private readonly now = () => new Date(),
-    private readonly network = new LoginNetworkService()
+    private readonly network = new LoginNetworkService(),
+    private readonly database: Pick<IxcReadDatabase, "withSnapshot" | "close"> = new IxcReadDatabase()
   ) {
     this.technical = new UpgradeService(ixc, now, { activeOnly: false }, network);
   }
   async close() {
     await this.technical.close();
+    await this.database.close();
   }
   private async read(endpoint: string, request: IxcListRequest, page = 1) {
     try {
@@ -155,6 +197,24 @@ export class SupportService {
           ? await this.customerIdsByDocument(query.search)
           : null;
     if (customerIds && !customerIds.length) return this.page([], 0, { page: query.page, limit: query.limit });
+    if (query.sortColumn === "city") {
+      // The cliente REST grid cannot sort by a field from cidade. Join it in the
+      // read database so city names determine the page, rather than numeric IDs.
+      return this.database.withSnapshot(async (session) => {
+        const queries = customerLocalitySql(query, customerIds);
+        const [count] = await session.select<{ total: string | number }>(queries.count);
+        const rows = await session.select<Row>(queries.list);
+        const total = Number(count?.total ?? 0);
+        if (!Number.isSafeInteger(total) || total < rows.length || rows.some((row) => !id(row.id)))
+          throw fail("A resposta do IXC não corresponde à lista de clientes. Atualize a consulta.", 502);
+        const cities = new Map(rows.filter((row) => id(row.cidade)).map((row) => [id(row.cidade)!, text(row.cityName)]));
+        return this.page(
+          rows.map((row) => this.customerDto(row, cities)),
+          total,
+          { page: query.page, limit: query.limit }
+        );
+      });
+    }
     const field = query.searchBy === "id" ? "id" : query.searchBy === "address" ? "endereco" : "razao";
     const { rows, total } = await this.read(
       "cliente",
@@ -165,7 +225,7 @@ export class SupportService {
         gridParam: grid,
         ...ixcColumnOrder(
           query,
-          { name: "cliente.razao", active: "cliente.ativo", city: "cidade.nome", phone: "cliente.telefone_celular" },
+          { name: "cliente.razao", active: "cliente.ativo", phone: "cliente.telefone_celular" },
           "cliente.razao",
           "asc"
         ),
@@ -246,6 +306,21 @@ export class SupportService {
   async logins(customerId: number, query: SupportPage, allowAccess: boolean) {
     const { rows, total } = await this.owned(customerId, "radusuarios", query);
     return this.page(await this.network.enrich(rows.map((row) => loginDetails(row, allowAccess))), total, query);
+  }
+  async customerLogin(customerId: number, loginId: number, allowAccess: boolean) {
+    await this.customerRow(customerId);
+    const { rows } = await this.read("radusuarios", {
+      qtype: "radusuarios.id",
+      query: String(loginId),
+      oper: "=",
+      sortname: "radusuarios.id",
+      rp: 1,
+      gridParam: [{ TB: "radusuarios.id_cliente", OP: "=", P: String(customerId) }],
+    });
+    const row = rows.find((row) => id(row.id) === loginId && id(row.id_cliente) === customerId);
+    if (!row) throw fail("Login não encontrado para este cliente.", 404);
+    const [login] = await this.network.enrich([loginDetails(row, allowAccess)]);
+    return { login, queriedAt: this.now().toISOString() };
   }
   async cases(customerId: number, kind: "orders" | "tickets", query: SupportPage) {
     const endpoint = kind === "orders" ? "su_oss_chamado" : "su_ticket";

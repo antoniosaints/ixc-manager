@@ -123,8 +123,12 @@ async function copy(value: string) {
             :label="`Ver contrato #${data.login.contractId}`"
           />
           <RecordQuickLink
-            v-if="data.login.contractId"
-            :target="{ kind: 'login', id: data.login.id, contractId: data.login.contractId }"
+            v-if="data.login.customerId || data.login.contractId"
+            :target="
+              data.login.customerId && auth.can('support.customer.view')
+                ? { kind: 'login', id: data.login.id, customerId: data.login.customerId }
+                : { kind: 'login', id: data.login.id, contractId: data.login.contractId ?? 0 }
+            "
             label="Dados completos no Suporte"
           />
           <CustomerQuickLinks

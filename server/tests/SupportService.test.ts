@@ -355,6 +355,32 @@ describe("Suporte realtime", () => {
     });
     await expect(service.technical.loginAccess(100, 999, "http", 80)).rejects.toMatchObject({ statusCode: 404 });
   });
+  it("abre o login pelo cliente mesmo sem contrato e mantém as consultas contratuais restritas", async () => {
+    const { service, listPage } = setup({ radusuarios: [{ ...login, id: "13621", id_contrato: "0" }] });
+    const result = await service.customerLogin(1, 13621, false);
+    expect(result.login).toMatchObject({ id: 13621, customerId: 1, contractId: null, login: "exemplo" });
+    expect(JSON.stringify(result)).not.toMatch(/PRIVATE_PASSWORD|AUTH_PASSWORD|PRIVATE_HASH/);
+    expect(result.login?.accessTargets.every((target) => target.url === null)).toBe(true);
+    expect(listPage.mock.calls.find(([endpoint]) => endpoint === "radusuarios")?.[1]).toMatchObject({
+      qtype: "radusuarios.id",
+      query: "13621",
+      rp: 1,
+      gridParam: [{ TB: "radusuarios.id_cliente", OP: "=", P: "1" }],
+    });
+    await expect(service.technical.login(100, 13621, false)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(service.technical.loginSecret(100, 13621, "authentication")).rejects.toMatchObject({ statusCode: 404 });
+  });
+  it("usa o contrato real do login e rejeita respostas de outro cliente mesmo se a API ignorar o filtro", async () => {
+    const { service, listPage } = setup({ radusuarios: [{ ...login, id_contrato: "101" }] });
+    expect((await service.customerLogin(1, 200, false)).login?.contractId).toBe(101);
+    await expect(service.customerLogin(1, 999, false)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(service.customerLogin(999, 200, false)).rejects.toMatchObject({ statusCode: 404 });
+    listPage.mockImplementation(async (endpoint) => ({
+      rows: endpoint === "cliente" ? [customer] : [{ ...login, id_cliente: "2" }],
+      total: 1,
+    }));
+    await expect(service.customerLogin(1, 200, false)).rejects.toMatchObject({ statusCode: 404 });
+  });
   it("distingue cadastro ausente, lista vazia e falha sanitizada da API", async () => {
     const { service, listPage } = setup();
     await expect(service.customer(999)).rejects.toMatchObject({ statusCode: 404 });

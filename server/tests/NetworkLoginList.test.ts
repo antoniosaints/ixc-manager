@@ -201,6 +201,7 @@ describe("Lista geral de logins", () => {
       "COMMERCIAL",
       "FINANCE",
       "COLLECTIONS",
+      "RAFFLES",
     ]);
     for (const preset of accessPresets) {
       expect(new Set(preset.permissions).size).toBe(preset.permissions.length);

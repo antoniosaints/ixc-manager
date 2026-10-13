@@ -88,7 +88,11 @@ function keyboard(e: KeyboardEvent) {
         :kind="tab"
       />
       <ContractLogins v-else-if="tab === 'logins' && auth.can('support.logins.view')" :contract-id="contractId" />
-      <SupportComodato v-else-if="tab === 'comodato' && auth.can('support.comodato.view')" :contract-id="contractId" />
+      <SupportComodato
+        v-else-if="tab === 'comodato' && auth.can('support.comodato.view')"
+        :contract-id="contractId"
+        :customer-id="data?.contract.customerId"
+      />
     </div>
     <p v-if="data" class="mt-3 text-[10px] text-slate-500">
       Consultado em {{ formatConsulted(data.queriedAt) }} · Brasília · Consulta direta ao IXC

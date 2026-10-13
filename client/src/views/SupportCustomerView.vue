@@ -34,10 +34,17 @@ const definitions = [
   { id: "tickets", label: "Atendimentos", icon: Headset, permission: "support.tickets.view" },
 ] as const;
 const tabs = computed(() => definitions.filter((item) => auth.can(item.permission)));
-const tab = ref(tabs.value[0]?.id);
+const tab = ref(tabs.value.find((item) => item.id === String(route.query.tab ?? "customer"))?.id ?? tabs.value[0]?.id);
+watch(
+  () => route.query.tab,
+  (value) => {
+    const requested = tabs.value.find((item) => item.id === String(value ?? "customer"));
+    if (requested) tab.value = requested.id;
+  }
+);
 watch(customerId, () => {
   analysisOpen.value = false;
-  tab.value = tabs.value[0]?.id;
+  tab.value = tabs.value.find((item) => item.id === String(route.query.tab ?? "customer"))?.id ?? tabs.value[0]?.id;
   reload();
 });
 watch(tabs, (value) => {

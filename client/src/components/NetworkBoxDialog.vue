@@ -469,8 +469,12 @@ const statusLabel = (status: string) => (status === "online" ? "Online" : status
             :label="`Ver contrato #${selectedLogin.contractId}`"
           />
           <RecordQuickLink
-            v-if="selectedLogin.contractId"
-            :target="{ kind: 'login', id: selectedLogin.id, contractId: selectedLogin.contractId }"
+            v-if="selectedLogin.customerId || selectedLogin.contractId"
+            :target="
+              selectedLogin.customerId && auth.can('support.customer.view')
+                ? { kind: 'login', id: selectedLogin.id, customerId: selectedLogin.customerId }
+                : { kind: 'login', id: selectedLogin.id, contractId: selectedLogin.contractId ?? 0 }
+            "
             label="Dados completos do login"
           />
           <CustomerQuickLinks

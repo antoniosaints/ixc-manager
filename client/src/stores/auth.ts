@@ -39,6 +39,7 @@ export const useAuthStore = defineStore("auth", {
       if (this.can("network.pon.view")) return "/network/pon";
       if (this.can("finance.dashboard.view")) return "/finance";
       if (this.can("collections.customers.view")) return "/collections";
+      if (this.can("raffles.view")) return "/raffles";
       if (this.can("churn.processes.view")) return "/sync";
       return "/no-access";
     },

@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import SortableHeader from "../components/SortableHeader.vue";
 import { useTableSort } from "../composables/useTableSort";
-import { Users, ArrowUpRight, Headset, Search, RotateCcw } from "lucide-vue-next";
+import { Users, ArrowUpRight, Headset, Search, RotateCcw, Orbit } from "lucide-vue-next";
 
-import { computed, ref, watch } from "vue";
+import { computed, defineAsyncComponent, ref, watch } from "vue";
 
 import { useRoute, useRouter } from "vue-router";
-import { supportApi } from "../supportApi";
+import { supportApi, type SupportCustomer } from "../supportApi";
 import { useAuthStore } from "../stores/auth";
 import { useLiveQuery } from "../composables/useLiveQuery";
 import LiveQueryState from "../components/LiveQueryState.vue";
 import LivePagination from "../components/LivePagination.vue";
+const CustomerGraphDialog = defineAsyncComponent(() => import("../components/CustomerGraphDialog.vue"));
+const graphCustomer = ref<SupportCustomer | null>(null);
 const route = useRoute(),
   router = useRouter(),
   auth = useAuthStore();
@@ -37,6 +39,18 @@ const params = computed(
 );
 const { data, loading, error, reload } = useLiveQuery((signal) => supportApi.customers(params.value, signal));
 watch([page, limit], reload);
+watch(
+  () => auth.can("support.customer.view"),
+  (allowed) => {
+    if (!allowed) graphCustomer.value = null;
+  }
+);
+watch(
+  () => route.fullPath,
+  () => {
+    graphCustomer.value = null;
+  }
+);
 watch(
   () => route.query,
   () => {
@@ -129,7 +143,7 @@ function clear() {
                 <SortableHeader column="active" :sort="tableSort" label="Cadastro" @change="setTableSort">Cadastro</SortableHeader>
                 <SortableHeader column="city" :sort="tableSort" label="Localidade" @change="setTableSort">Localidade</SortableHeader>
                 <SortableHeader column="phone" :sort="tableSort" label="Contato" @change="setTableSort">Contato</SortableHeader>
-                <th scope="col" class="w-12 !pr-4"><span class="sr-only">Ações do cliente</span></th>
+                <th scope="col" class="w-36 !pr-4"><span class="sr-only">Ações do cliente</span></th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -172,15 +186,28 @@ function clear() {
                 </td>
                 <td class="whitespace-nowrap">{{ customer.phone ?? "—" }}</td>
                 <td class="!pr-4 text-right">
-                  <RouterLink
-                    v-if="auth.can('support.customer.view')"
-                    :to="`/support/customers/${customer.id}`"
-                    :aria-label="`Abrir cliente ${customer.name}, ID ${customer.id}`"
-                    title="Abrir cliente"
-                    class="inline-flex rounded p-1 text-indigo-600 hover:bg-slate-100"
-                    @click.stop
-                    ><ArrowUpRight class="h-4 w-4" aria-hidden="true" focusable="false"
-                  /></RouterLink>
+                  <div class="flex items-center justify-end gap-2 whitespace-nowrap">
+                    <button
+                      v-if="auth.can('support.customer.view')"
+                      type="button"
+                      class="inline-flex items-center gap-1 rounded-lg border border-indigo-100 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100"
+                      :aria-label="`Abrir mapa 360° de ${customer.name}`"
+                      aria-haspopup="dialog"
+                      title="Explorar conexões e histórico do cliente"
+                      @click.stop="graphCustomer = customer"
+                    >
+                      <Orbit class="h-3.5 w-3.5" aria-hidden="true" />Mapa 360°
+                    </button>
+                    <RouterLink
+                      v-if="auth.can('support.customer.view')"
+                      :to="`/support/customers/${customer.id}`"
+                      :aria-label="`Abrir cliente ${customer.name}, ID ${customer.id}`"
+                      title="Abrir cliente"
+                      class="inline-flex rounded p-1 text-indigo-600 hover:bg-slate-100"
+                      @click.stop
+                      ><ArrowUpRight class="h-4 w-4" aria-hidden="true" focusable="false"
+                    /></RouterLink>
+                  </div>
                 </td>
               </tr>
               <tr v-if="!data.items.length">
@@ -196,5 +223,12 @@ function clear() {
         <LivePagination v-model:page="page" v-model:limit="limit" :total="data.total" :queried-at="data.queriedAt" class="!py-2" />
       </template>
     </section>
+    <CustomerGraphDialog
+      v-if="graphCustomer && auth.can('support.customer.view')"
+      :key="graphCustomer.id"
+      :customer-id="graphCustomer.id"
+      :customer-name="graphCustomer.name"
+      @close="graphCustomer = null"
+    />
   </div>
 </template>

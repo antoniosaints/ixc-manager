@@ -1,4 +1,5 @@
 import { apiFetch } from "./http";
+import type { CustomerGraph } from "./customerGraph/model";
 import { createTechnicalApi, type ContractContact, type LivePage, type UpgradeLogin } from "./upgradesApi";
 export interface SupportCustomer {
   id: number;
@@ -182,6 +183,7 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return response.json();
 }
 export const supportApi = {
+  graph: (id: string, signal?: AbortSignal) => get<CustomerGraph>(`/customers/${encodeURIComponent(id)}/graph`, signal),
   contractList: (params: URLSearchParams, signal?: AbortSignal) => get<LivePage<SupportContractListItem>>(`/contracts?${params}`, signal),
   contractFilters: (signal?: AbortSignal) =>
     get<{ branches: { id: number; name: string }[]; plans: { id: number; name: string }[] }>("/contracts/filters", signal),
@@ -195,6 +197,8 @@ export const supportApi = {
   ...createTechnicalApi("/api/support"),
   login: (id: string, loginId: number, signal?: AbortSignal) =>
     get<{ login: UpgradeLogin; queriedAt: string }>(`/contracts/${encodeURIComponent(id)}/logins/${loginId}`, signal),
+  customerLogin: (id: string, loginId: number, signal?: AbortSignal) =>
+    get<{ login: UpgradeLogin; queriedAt: string }>(`/customers/${encodeURIComponent(id)}/logins/${loginId}`, signal),
   customers: (params: URLSearchParams, signal?: AbortSignal) => get<LivePage<SupportCustomer>>(`/customers?${params}`, signal),
   customer: (id: string, signal?: AbortSignal) =>
     get<{ customer: SupportCustomerDetails; queriedAt: string; source: "database" }>(`/customers/${encodeURIComponent(id)}`, signal),

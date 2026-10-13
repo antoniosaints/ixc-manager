@@ -14,6 +14,7 @@ import { directRetention } from "./services/retention/DirectRetentionService.js"
 import { registerFrontend } from "./http/frontend.js";
 import { corsOptions } from "./http/cors.js";
 import { loginToolsRoutes } from "./controllers/loginToolsController.js";
+import { raffleRoutes } from "./controllers/raffleController.js";
 
 import { providerAnalyticsRoutes } from "./controllers/providerAnalyticsController.js";
 
@@ -31,6 +32,7 @@ await app.register(loginToolsRoutes, { prefix: "/api/login-tools", logLevel: "si
 await app.register(financeRoutes, { prefix: "/api/finance", logLevel: "silent" });
 await app.register(collectionsRoutes, { prefix: "/api/collections", logLevel: "silent" });
 await app.register(providerAnalyticsRoutes, { prefix: "/api/provider-analytics", logLevel: "silent" });
+await app.register(raffleRoutes, { prefix: "/api/raffles", logLevel: "silent" });
 app.get("/health", async () => ({ status: "ok" }));
 await registerFrontend(app, env.FRONTEND_DIST);
 await app.listen({ port: env.PORT, host: "0.0.0.0" });

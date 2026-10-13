@@ -10,6 +10,7 @@ import { directRetention } from "../services/retention/DirectRetentionService.js
 import { SupportOrderFilesService } from "../services/support/SupportOrderFilesService.js";
 import { SupportOrdersService, supportOrdersQuery } from "../services/support/SupportOrdersService.js";
 import { SupportContractsService, supportContractsQuery } from "../services/support/SupportContractsService.js";
+import { CustomerGraphService } from "../services/support/CustomerGraphService.js";
 
 const pagination = z.object({
   ...columnSortFields,
@@ -35,6 +36,8 @@ export async function supportRoutes(app: FastifyInstance) {
   const orderFiles = new SupportOrderFilesService();
   const orders = new SupportOrdersService();
   const contracts = new SupportContractsService();
+  const graph = new CustomerGraphService();
+  app.addHook("onClose", () => graph.close());
   app.addHook("onClose", () => contracts.close());
   app.addHook("onClose", () => orders.close());
   app.addHook("onClose", () => service.close());
@@ -114,6 +117,31 @@ export async function supportRoutes(app: FastifyInstance) {
       reply.raw.off("close", disconnected);
     }
   });
+  app.get("/customers/:id/graph", options, async (request, reply) => {
+    const user = await auth.requirePermission(request, "support.customer.view");
+    const customerId = ids.parse(request.params).id;
+    const controller = new AbortController();
+    const disconnected = () => {
+      if (!reply.raw.writableEnded) controller.abort();
+    };
+    reply.raw.on("close", disconnected);
+    try {
+      return await graph.get(
+        customerId,
+        {
+          contracts: auth.can(user, "support.contract.view"),
+          logins: auth.can(user, "support.logins.view"),
+          orders: auth.can(user, "support.orders.view"),
+          tickets: auth.can(user, "support.tickets.view"),
+          equipment: auth.can(user, "support.contract.view") && auth.can(user, "support.comodato.view"),
+          financial: auth.can(user, "finance.dashboard.view") ? "full" : auth.can(user, "support.customer.analyze") ? "summary" : "none",
+        },
+        controller.signal
+      );
+    } finally {
+      reply.raw.off("close", disconnected);
+    }
+  });
   app.get("/customers/:id/analysis", options, async (request, reply) => {
     await auth.requirePermission(request, "support.customer.view", "support.customer.analyze");
     const customerId = ids.parse(request.params).id;
@@ -135,6 +163,11 @@ export async function supportRoutes(app: FastifyInstance) {
   app.get("/customers/:id/logins", options, async (request) => {
     const user = await auth.requirePermission(request, "support.customer.view", "support.logins.view");
     return service.logins(ids.parse(request.params).id, pagination.parse(request.query), auth.can(user, "support.equipment.access"));
+  });
+  app.get("/customers/:id/logins/:loginId", options, async (request) => {
+    const user = await auth.requirePermission(request, "support.customer.view", "support.logins.view");
+    const { id, loginId } = ids.parse(request.params);
+    return service.customerLogin(id, loginId!, auth.can(user, "support.equipment.access"));
   });
   for (const kind of ["orders", "tickets"] as const)
     app.get(`/customers/:id/${kind}`, options, async (request) => {

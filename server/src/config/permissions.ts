@@ -1,4 +1,9 @@
 export const permissionCatalog = [
+  { key: "raffles.view", group: "Sorteios", label: "Visualizar sorteios e resultados" },
+  { key: "raffles.manage", group: "Sorteios", label: "Preparar sorteios, filtrar contratos, definir prêmios e apresentação" },
+  { key: "raffles.draw", group: "Sorteios", label: "Executar rodadas e sortear ganhadores" },
+  { key: "raffles.share", group: "Sorteios", label: "Gerar, renovar e revogar links públicos dos sorteios" },
+  { key: "raffles.export", group: "Sorteios", label: "Exportar resultados de sorteios em PDF" },
   { key: "analytics.dashboard.view", group: "Analytics", label: "Ver painel de gestão (dados conforme permissões dos módulos)" },
   { key: "network.pon.view", group: "Rede", label: "Monitorar PONs, vínculos ONU/CTO/login e sessões RADIUS em tempo real" },
   { key: "network.logins.disconnect", group: "Rede", label: "Desconectar login no IXC (interrompe a sessão do cliente)" },
@@ -159,6 +164,12 @@ export const accessPresets: { key: string; name: string; description: string; pe
     name: "Cobranças",
     description: "Fila, contatos, títulos pendentes e exportação para cobrança.",
     permissions: ["collections.customers.view", "collections.customer.view", "collections.export"],
+  },
+  {
+    key: "RAFFLES",
+    name: "Sorteios",
+    description: "Configuração, operação, transmissão pública e exportação de sorteios.",
+    permissions: ["raffles.view", "raffles.manage", "raffles.draw", "raffles.share", "raffles.export"],
   },
 ];
 export function effectivePermissions(role: string, profile: string[] | null, overrides: Record<string, boolean> = {}): Permission[] {

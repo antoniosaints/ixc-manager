@@ -12,7 +12,7 @@ import { useLiveQuery } from "../composables/useLiveQuery";
 import LiveQueryState from "./LiveQueryState.vue";
 import RecordQuickLink from "./RecordQuickLink.vue";
 import LivePagination from "./LivePagination.vue";
-const props = defineProps<{ contractId: string }>();
+const props = defineProps<{ contractId: string; customerId?: number }>();
 const auth = useAuthStore();
 const page = ref(1),
   limit = ref(10);
@@ -104,8 +104,16 @@ const status = (value: string | null) => (value === "E" ? "Emprestado" : value ?
               </td>
               <td class="px-4 py-2">
                 <RecordQuickLink
-                  v-if="item.loginId && auth.can('support.contract.view') && auth.can('support.logins.view')"
-                  :target="{ kind: 'login', id: item.loginId, contractId: Number(contractId) }"
+                  v-if="
+                    item.loginId &&
+                    auth.can('support.logins.view') &&
+                    (auth.can('support.contract.view') || (customerId && auth.can('support.customer.view')))
+                  "
+                  :target="
+                    customerId && auth.can('support.customer.view')
+                      ? { kind: 'login', id: item.loginId, customerId }
+                      : { kind: 'login', id: item.loginId, contractId: Number(contractId) }
+                  "
                   :label="`Login #${item.loginId}`"
                 />
                 <span v-else class="text-slate-500">{{ item.loginId ? `#${item.loginId}` : "Sem login vinculado" }}</span>

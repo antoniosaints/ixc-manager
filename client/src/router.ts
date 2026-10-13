@@ -31,6 +31,12 @@ import { useAuthStore } from "./stores/auth";
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: "/raffles", component: () => import("./views/RafflesView.vue"), meta: { module: "raffles", permission: "raffles.view" } },
+    {
+      path: "/sorteios/ao-vivo/:token",
+      component: () => import("./views/RafflePublicView.vue"),
+      meta: { public: true, rafflePublic: true },
+    },
     { path: "/overview", component: ProviderAnalyticsView, meta: { module: "analytics", permission: "analytics.dashboard.view" } },
     { path: "/network/pon", component: NetworkPonView, meta: { module: "network", permission: "network.pon.view" } },
     { path: "/network", component: NetworkView, meta: { module: "network", permission: "network.boxes.view" } },
@@ -77,6 +83,7 @@ const router = createRouter({
   ],
 });
 router.beforeEach(async (to) => {
+  if (to.meta.rafflePublic) return true;
   const auth = useAuthStore();
   const wasInitialized = auth.initialized;
   await auth.initialize();

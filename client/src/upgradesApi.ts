@@ -100,8 +100,8 @@ export interface EquipmentTarget {
 export interface UpgradeLogin {
   technology?: { code: string | null; label: string; kind: string };
   id: number;
-  contractId: number;
-  customerId: number;
+  contractId: number | null;
+  customerId: number | null;
   login: string | null;
   active: boolean | null;
   status: "online" | "offline" | "unknown";

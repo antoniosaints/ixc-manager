@@ -25,10 +25,17 @@ describe("Atalhos de registros: permissões de destino e IDs", () => {
     expect(canOpenRecord({ kind: "collection", id: 20 }, grants("finance.dashboard.view"))).toBe(false);
     expect(canOpenRecord({ kind: "collection", id: 20 }, grants("collections.customer.view"))).toBe(true);
   });
+  it("abre login sem contrato pelo cadastro e exige as permissões do cliente e dos logins", () => {
+    const login: RecordTarget = { kind: "login", id: 13621, customerId: 6263 };
+    expect(canOpenRecord(login, grants("support.customer.view", "support.logins.view"))).toBe(true);
+    expect(canOpenRecord(login, grants("support.contract.view", "support.logins.view"))).toBe(false);
+    expect(canOpenRecord(login, grants("support.customer.view"))).toBe(false);
+  });
   it("descarta IDs inválidos antes de abrir qualquer consulta", () => {
     for (const id of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
       expect(canOpenRecord({ kind: "box", id }, () => true)).toBe(false);
       expect(canOpenRecord({ kind: "login", id: 1, contractId: id }, () => true)).toBe(false);
+      expect(canOpenRecord({ kind: "login", id: 1, customerId: id }, () => true)).toBe(false);
       expect(canOpenRecord({ kind: "orders", id: 1, customerId: id }, () => true)).toBe(false);
     }
   });

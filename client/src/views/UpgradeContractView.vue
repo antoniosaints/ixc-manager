@@ -355,7 +355,12 @@ const yesNo = (value: boolean | null) => (value === null ? "Não informado" : va
         :module="module"
         :kind="tab"
       />
-      <SupportComodato v-else-if="isSupport && tab === 'comodato' && can('comodato.view')" :key="contractId" :contract-id="contractId" />
+      <SupportComodato
+        v-else-if="isSupport && tab === 'comodato' && can('comodato.view')"
+        :key="contractId"
+        :contract-id="contractId"
+        :customer-id="contract?.customerId"
+      />
       <template v-else-if="technical && can('logins.view')">
         <section class="panel mb-4 overflow-hidden">
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
