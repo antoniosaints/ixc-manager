@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "./SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { computed } from "vue";
 import { Line } from "vue-chartjs";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend } from "chart.js";
@@ -134,6 +136,20 @@ const options = computed(() => ({
       : {}),
   },
 }));
+const { tableSort, setTableSort, sortedRows } = useTableSort();
+const tableRows = computed(() =>
+  sortedRows(
+    props.labels.map((label, i) => ({
+      label,
+      i,
+      first: props.first[i],
+      second: props.second[i],
+      balance: props.balance?.[i],
+      percentage: props.percentage?.[i],
+    })),
+    (row, column) => (column === "label" ? row.i : row[column as keyof typeof row])
+  )
+);
 </script>
 <template>
   <div>
@@ -152,15 +168,21 @@ const options = computed(() => ({
           </caption>
           <thead>
             <tr>
-              <th scope="col">{{ yearly ? "Ano" : monthly ? "Mês" : "Data" }}</th>
-              <th scope="col">{{ names[0] }}</th>
-              <th scope="col">{{ names[1] }}</th>
-              <th v-if="balance" scope="col">{{ balanceLabel }}</th>
-              <th v-if="percentage" scope="col">{{ percentageLabel }}</th>
+              <SortableHeader column="label" :sort="tableSort" :label="yearly ? 'Ano' : monthly ? 'Mês' : 'Data'" @change="setTableSort">{{
+                yearly ? "Ano" : monthly ? "Mês" : "Data"
+              }}</SortableHeader>
+              <SortableHeader column="first" :sort="tableSort" :label="names[0]" @change="setTableSort">{{ names[0] }}</SortableHeader>
+              <SortableHeader column="second" :sort="tableSort" :label="names[1]" @change="setTableSort">{{ names[1] }}</SortableHeader>
+              <SortableHeader v-if="balance" column="balance" :sort="tableSort" :label="balanceLabel" @change="setTableSort">{{
+                balanceLabel
+              }}</SortableHeader>
+              <SortableHeader v-if="percentage" column="percentage" :sort="tableSort" :label="percentageLabel" @change="setTableSort">{{
+                percentageLabel
+              }}</SortableHeader>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(label, i) in labels" :key="i">
+            <tr v-for="{ label, i } in tableRows" :key="i">
               <th scope="row">{{ label }}</th>
               <td>
                 {{

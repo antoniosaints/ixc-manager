@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "../components/SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import {
   FileText,
   TrendingUp,
@@ -76,8 +78,12 @@ const compactPermanence = (contract: UpgradeContract) =>
       : contract.daysRemaining === 0
         ? "Hoje"
         : `Em ${contract.daysRemaining}d`;
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  page.value = 1;
+  void reload();
+});
 const params = () => {
-  const p = new URLSearchParams({ ...applied.value, page: String(page.value), limit: limit.value });
+  const p = new URLSearchParams({ ...sortParams(), ...applied.value, page: String(page.value), limit: limit.value });
   if (!applied.value.planId) p.delete("planId");
   if (!applied.value.branchId) p.delete("branchId");
   return p;
@@ -373,12 +379,25 @@ watch(
                   @change="togglePage"
                 />
               </th>
-              <th class="py-2 pr-3">Cliente / contrato</th>
-              <th class="px-3 py-2">Plano atual</th>
+              <SortableHeader class="py-2 pr-3" column="contractId" :sort="tableSort" label="ID do contrato" @change="setTableSort"
+                >Cliente / contrato</SortableHeader
+              >
+              <SortableHeader class="px-3 py-2" column="contractName" :sort="tableSort" label="Nome do plano" @change="setTableSort"
+                >Plano atual</SortableHeader
+              >
               <th class="px-3 py-2">Localidade</th>
               <th class="px-3 py-2">Contato</th>
-              <th class="px-3 py-2">Permanência</th>
-              <th class="px-3 py-2">Acesso</th>
+              <SortableHeader
+                class="px-3 py-2"
+                column="expiresAt"
+                :sort="tableSort"
+                label="Vencimento da permanência"
+                @change="setTableSort"
+                >Permanência</SortableHeader
+              >
+              <SortableHeader class="px-3 py-2" column="internetStatus" :sort="tableSort" label="Situação do acesso" @change="setTableSort"
+                >Acesso</SortableHeader
+              >
               <th v-if="auth.can('upgrades.contract.view')" class="pr-4 py-2"><span class="sr-only">Detalhes</span></th>
             </tr>
           </thead>

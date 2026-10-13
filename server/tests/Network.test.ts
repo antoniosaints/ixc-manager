@@ -38,6 +38,25 @@ function fixture() {
 }
 afterEach(() => vi.restoreAllMocks());
 describe("Rede: contagens e vínculos somente de leitura", () => {
+  it("ordena todos os resultados antes de paginar e restaura a ordem padrão ao limpar", async () => {
+    const { db, service } = fixture();
+    try {
+      for (let id = 10; id <= 23; id++)
+        db.prepare("INSERT INTO rad_caixa_ftth(id,descricao,status,capacidade) VALUES (?,?,'A',?)").run(id, `Caixa ${id}`, id + 100);
+      const first = await service.boxes(boxesQuery.parse({ sortColumn: "capacity", sortDirection: "asc" }));
+      const second = await service.boxes(boxesQuery.parse({ sortColumn: "capacity", sortDirection: "asc", page: 2 }));
+      expect(first.items.map((row) => row.id)).toEqual([3, 1, 4, 10, 11, 12, 13, 14, 15, 16]);
+      expect(second.items.map((row) => row.id)).toEqual([17, 18, 19, 20, 21, 22, 23]);
+      const descending = await service.boxes(boxesQuery.parse({ sortColumn: "capacity", sortDirection: "desc" }));
+      expect(descending.items.map((row) => row.id)).toEqual([23, 22, 21, 20, 19, 18, 17, 16, 15, 14]);
+      const cleared = await service.boxes(boxesQuery.parse({}));
+      expect(cleared.items.map((row) => row.id)).toEqual(descending.items.map((row) => row.id));
+      expect(first.total).toBe(17);
+      await expect(service.boxes(boxesQuery.parse({ sortColumn: "password" }))).rejects.toMatchObject({ statusCode: 400 });
+    } finally {
+      db.close();
+    }
+  });
   it("separa online, offline e sem status dos ativos, mantendo inativos identificados", async () => {
     const { db, service } = fixture();
     try {

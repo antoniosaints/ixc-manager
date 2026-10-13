@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useTableSort } from "../composables/useTableSort";
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  void load(true);
+});
 import { computed, onMounted, ref } from "vue";
 import {
   Users,
@@ -112,7 +116,7 @@ const load = (resetPage = false, refreshSummary = false) => {
       limit: limit.value,
     })
   );
-  const q = new URLSearchParams();
+  const q = new URLSearchParams(sortParams());
   if (search.value) q.set("search", search.value);
   if (level.value) q.set("riskLevel", level.value);
   if (blocked.value) q.set("blocked", blocked.value);
@@ -304,6 +308,8 @@ onMounted(refresh);
         <img src="/infinite-spinner.svg" alt="" class="h-12 w-20" />Carregando dados analíticos…
       </div>
       <ChurnCustomerTable
+        :table-sort="tableSort"
+        @sort-change="setTableSort"
         v-else
         :customers="store.customers"
         :can-view-details="auth.canViewCustomerDetails"

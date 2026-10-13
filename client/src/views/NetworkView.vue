@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "../components/SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { computed, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Cable, Network, Search, RotateCcw, ArrowUpRight, Wifi, WifiOff, CircleDashed, MapPin } from "lucide-vue-next";
@@ -24,7 +26,13 @@ const applied = ref({ ...form }),
   selectedBox = ref<NetworkBox | null>(null),
   mapBox = ref<NetworkBox | null>(null),
   connection = ref("all");
-const params = computed(() => new URLSearchParams({ ...applied.value, page: String(page.value), limit: String(limit.value) }));
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  if (page.value !== 1) page.value = 1;
+  else void reload();
+});
+const params = computed(
+  () => new URLSearchParams({ ...sortParams(), ...applied.value, page: String(page.value), limit: String(limit.value) })
+);
 const { data, loading, error, reload, refreshInBackground } = useLiveQuery((signal) => networkApi.boxes(params.value, signal));
 // The box dialog owns the live socket. Refresh this snapshot once when it closes.
 watch(selectedBox, (box, previous) => {
@@ -152,12 +160,18 @@ function open(box: NetworkBox, status = "all") {
           <table class="compact-table min-w-[850px]">
             <thead>
               <tr>
-                <th scope="col" class="!pl-4">Caixa / ID</th>
-                <th scope="col">Cadastro</th>
-                <th scope="col">Localidade</th>
-                <th scope="col">Portas</th>
-                <th scope="col">Logins ativos</th>
-                <th scope="col">Conexão dos ativos</th>
+                <SortableHeader class="!pl-4" column="name" :sort="tableSort" label="Caixa / ID" @change="setTableSort"
+                  >Caixa / ID</SortableHeader
+                >
+                <SortableHeader column="active" :sort="tableSort" label="Cadastro" @change="setTableSort">Cadastro</SortableHeader>
+                <SortableHeader column="city" :sort="tableSort" label="Localidade" @change="setTableSort">Localidade</SortableHeader>
+                <SortableHeader column="capacity" :sort="tableSort" label="Portas" @change="setTableSort">Portas</SortableHeader>
+                <SortableHeader column="activeLogins" :sort="tableSort" label="Logins ativos" @change="setTableSort"
+                  >Logins ativos</SortableHeader
+                >
+                <SortableHeader column="onlineLogins" :sort="tableSort" label="Conexão dos ativos" @change="setTableSort"
+                  >Conexão dos ativos</SortableHeader
+                >
                 <th scope="col"><span class="sr-only">Detalhes da caixa</span></th>
               </tr>
             </thead>

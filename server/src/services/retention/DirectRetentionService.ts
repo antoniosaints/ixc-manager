@@ -1,3 +1,5 @@
+import { requestedSort } from "../../utils/columnSort.js";
+import { compareSortValues } from "../../utils/tableSort.js";
 import { IxcReadDatabase } from "../../integrations/ixc/database/IxcReadDatabase.js";
 import { db } from "../../repositories/database.js";
 import { RetentionRiskEngine } from "./RetentionRiskEngine.js";
@@ -228,6 +230,24 @@ export class DirectRetentionService {
   async listCustomers(filters: Filters, signal?: AbortSignal) {
     const [snapshot, state] = await Promise.all([this.snapshot(undefined, signal, filters.snapshotId), this.localState()]);
     const search = text(filters.search).toLocaleLowerCase("pt-BR");
+    const sort = requestedSort(filters, {
+      name: true,
+      score: true,
+      city: true,
+      plan_name: true,
+      financial_score: true,
+      support_score: true,
+      network_score: true,
+      calculated_at: true,
+    });
+    const value = (item: Scored, column: string) => {
+      if (column === "score") return item.risk.score;
+      if (column === "calculated_at") return snapshot.queriedAt;
+      if (column === "financial_score") return item.risk.factors.financial;
+      if (column === "support_score") return item.risk.factors.support;
+      if (column === "network_score") return item.risk.factors.network;
+      return text(item.row[column]) || null;
+    };
     const eligible = snapshot.items
       .filter(({ row, risk, context }) => {
         const workflow = state.workflow.get(context.customerId)?.status ?? "OPEN";
@@ -244,11 +264,12 @@ export class DirectRetentionService {
           (filters.workflowStatus === "ALL" || workflow === (filters.workflowStatus ?? "OPEN"))
         );
       })
-      .sort(
-        (a, b) =>
-          Number(state.attention.has(b.context.contractId)) - Number(state.attention.has(a.context.contractId)) ||
-          b.risk.score - a.risk.score ||
-          a.context.contractId - b.context.contractId
+      .sort((a, b) =>
+        sort
+          ? compareSortValues(value(a, sort.column), value(b, sort.column), sort.direction) || a.context.contractId - b.context.contractId
+          : Number(state.attention.has(b.context.contractId)) - Number(state.attention.has(a.context.contractId)) ||
+            b.risk.score - a.risk.score ||
+            a.context.contractId - b.context.contractId
       );
     return {
       items: eligible

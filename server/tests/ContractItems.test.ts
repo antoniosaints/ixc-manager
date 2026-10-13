@@ -74,6 +74,30 @@ function fixture(overrides: Record<string, unknown[]> = {}) {
   return { service, listPage };
 }
 describe("Produtos e serviços adicionais dos contratos", () => {
+  it("solicita ordenação do valor bruto e dos serviços no IXC antes de paginar e restaura o padrão", async () => {
+    const { service, listPage } = fixture();
+    await service.products(10, { page: 2, limit: 10, sortColumn: "gross", sortDirection: "desc" });
+    expect(listPage).toHaveBeenCalledWith(
+      "view_vd_contratos_produtos_gen",
+      expect.objectContaining({ sortname: "view_vd_contratos_produtos_gen.valor_bruto", sortorder: "desc", rp: 10 }),
+      2,
+      undefined
+    );
+    await service.additionalServices(10, { page: 1, limit: 10, sortColumn: "quantity", sortDirection: "asc" });
+    expect(listPage).toHaveBeenCalledWith(
+      "cliente_contrato_servicos",
+      expect.objectContaining({ sortname: "cliente_contrato_servicos.quantidade", sortorder: "asc" }),
+      1,
+      undefined
+    );
+    await service.products(10, { page: 1, limit: 10 });
+    expect(listPage).toHaveBeenCalledWith(
+      "view_vd_contratos_produtos_gen",
+      expect.objectContaining({ sortname: "view_vd_contratos_produtos_gen.id", sortorder: "asc" }),
+      1,
+      undefined
+    );
+  });
   it("maps consolidated grid values, includes plan and contract products and validates structured membership", async () => {
     const { service, listPage } = fixture();
     const signal = new AbortController().signal;

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "./SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { financialTitleStatus } from "../financialTitleStatus";
 import { computed, ref, watch } from "vue";
 import { Banknote, ArrowUpRight, Info, RefreshCw } from "lucide-vue-next";
@@ -13,12 +15,16 @@ const emit = defineEmits<{ close: [] }>();
 const auth = useAuthStore();
 const page = ref(1),
   limit = ref(10);
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  page.value = 1;
+});
 const query = computed(() => {
   const params = new URLSearchParams(props.params);
   params.set("accountId", String(props.account.id));
   params.set("basis", props.basis);
   params.set("page", String(page.value));
   params.set("limit", String(limit.value));
+  Object.entries(sortParams()).forEach(([key, value]) => params.set(key, value));
   return params;
 });
 const { data, loading, error, reload } = useLiveQuery((signal) => financeAccountDetail(query.value, signal));
@@ -85,13 +91,27 @@ const status = (value: string | null, kind: "receivable" | "payable") => financi
         <table class="compact-table min-w-[950px]">
           <thead>
             <tr>
-              <th scope="col">Lançamento / data</th>
-              <th scope="col">Título / cliente ou fornecedor</th>
-              <th scope="col">Documento / vencimento</th>
-              <th scope="col" class="text-right">Valor do título</th>
-              <th scope="col" class="text-right">Débito</th>
-              <th scope="col" class="text-right">Crédito</th>
-              <th scope="col" class="text-right">Contribuição</th>
+              <SortableHeader column="day" :sort="tableSort" label="Data do lançamento" @change="setTableSort"
+                >Lançamento / data</SortableHeader
+              >
+              <SortableHeader column="partyName" :sort="tableSort" label="Cliente ou fornecedor" @change="setTableSort"
+                >Título / cliente ou fornecedor</SortableHeader
+              >
+              <SortableHeader column="dueDate" :sort="tableSort" label="Data de vencimento" @change="setTableSort"
+                >Documento / vencimento</SortableHeader
+              >
+              <SortableHeader class="text-right" column="amount" :sort="tableSort" label="Valor do título" @change="setTableSort"
+                >Valor do título</SortableHeader
+              >
+              <SortableHeader class="text-right" column="debit" :sort="tableSort" label="Débito" @change="setTableSort"
+                >Débito</SortableHeader
+              >
+              <SortableHeader class="text-right" column="credit" :sort="tableSort" label="Crédito" @change="setTableSort"
+                >Crédito</SortableHeader
+              >
+              <SortableHeader class="text-right" column="contribution" :sort="tableSort" label="Contribuição" @change="setTableSort"
+                >Contribuição</SortableHeader
+              >
             </tr>
           </thead>
           <tbody>

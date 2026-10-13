@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "../components/SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { computed, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { FileText, Search, RotateCcw, ArrowUpRight } from "lucide-vue-next";
@@ -22,7 +24,12 @@ const draft = reactive(readFilters()),
   applied = ref(readFilters()),
   page = ref(1),
   limit = ref(10);
-const params = computed(() => new URLSearchParams({ ...applied.value, page: String(page.value), limit: String(limit.value) }));
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  page.value = 1;
+});
+const params = computed(
+  () => new URLSearchParams({ ...sortParams(), ...applied.value, page: String(page.value), limit: String(limit.value) })
+);
 const { data, loading, error, reload } = useLiveQuery((signal) => supportApi.contractList(params.value, signal));
 const {
   data: filters,
@@ -152,12 +159,18 @@ const placeholders: Record<string, string> = {
           <table class="compact-table min-w-[1020px]">
             <thead>
               <tr>
-                <th scope="col" class="!pl-4">Cliente / contrato</th>
-                <th scope="col">Plano</th>
-                <th scope="col">Contrato</th>
-                <th scope="col">Acesso</th>
-                <th scope="col">Localidade / filial</th>
-                <th scope="col">Contato / ativação</th>
+                <SortableHeader class="!pl-4" column="customerName" :sort="tableSort" label="Cliente / contrato" @change="setTableSort"
+                  >Cliente / contrato</SortableHeader
+                >
+                <SortableHeader column="planName" :sort="tableSort" label="Plano" @change="setTableSort">Plano</SortableHeader>
+                <SortableHeader column="status" :sort="tableSort" label="Contrato" @change="setTableSort">Contrato</SortableHeader>
+                <SortableHeader column="internetStatus" :sort="tableSort" label="Acesso" @change="setTableSort">Acesso</SortableHeader>
+                <SortableHeader column="city" :sort="tableSort" label="Localidade / filial" @change="setTableSort"
+                  >Localidade / filial</SortableHeader
+                >
+                <SortableHeader column="activatedAt" :sort="tableSort" label="Data de ativação" @change="setTableSort"
+                  >Contato / ativação</SortableHeader
+                >
                 <th scope="col" class="w-12 !pr-4"><span class="sr-only">Detalhes do contrato</span></th>
               </tr>
             </thead>
@@ -207,8 +220,7 @@ const placeholders: Record<string, string> = {
                 </td>
                 <td class="max-w-44">
                   <span class="block truncate" :title="contract.city ?? ''">{{ contract.city ?? "—" }}</span
-                  ><span class="compact-secondary truncate">{{ contract.neighborhood ?? "—" }}</span
-                  >
+                  ><span class="compact-secondary truncate">{{ contract.neighborhood ?? "—" }}</span>
                 </td>
                 <td class="whitespace-nowrap">
                   {{ contract.phone ?? "—" }}<span class="compact-secondary">Ativação: {{ formatDate(contract.activatedAt) }}</span>

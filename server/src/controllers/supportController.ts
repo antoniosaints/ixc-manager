@@ -1,3 +1,4 @@
+import { columnSortFields } from "../utils/columnSort.js";
 import { ContractItemsService } from "../services/contracts/ContractItemsService.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -11,6 +12,7 @@ import { SupportOrdersService, supportOrdersQuery } from "../services/support/Su
 import { SupportContractsService, supportContractsQuery } from "../services/support/SupportContractsService.js";
 
 const pagination = z.object({
+  ...columnSortFields,
   page: z.coerce.number().int().min(1).max(100_000).default(1),
   limit: z.coerce
     .number()

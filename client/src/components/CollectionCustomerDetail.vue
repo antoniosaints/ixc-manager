@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "./SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { computed, ref, watch } from "vue";
 import { Banknote, FileText, Phone, RefreshCw, TriangleAlert, MapPin } from "lucide-vue-next";
 import { collectionsApi, collectionMoney as money } from "../collectionsApi";
@@ -14,7 +16,13 @@ const props = defineProps<{ customerId: number; filters: Record<string, string> 
 const auth = useAuthStore(),
   page = ref(1),
   limit = ref(10);
-const params = computed(() => new URLSearchParams({ ...props.filters, page: String(page.value), limit: String(limit.value) }));
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  if (page.value !== 1) page.value = 1;
+  else void reload();
+});
+const params = computed(
+  () => new URLSearchParams({ ...sortParams(), ...props.filters, page: String(page.value), limit: String(limit.value) })
+);
 const { data, loading, error, reload } = useLiveQuery((signal) => collectionsApi.customer(props.customerId, params.value, signal));
 watch([page, limit], reload);
 </script>
@@ -77,13 +85,23 @@ watch([page, limit], reload);
         <table class="compact-table min-w-[850px]">
           <thead>
             <tr>
-              <th scope="col">Título / documento</th>
-              <th scope="col">Contrato / acesso</th>
-              <th scope="col">Conta / filial</th>
-              <th scope="col">Vencimento</th>
-              <th scope="col" class="text-right">Original</th>
-              <th scope="col" class="text-right">Recebido</th>
-              <th scope="col" class="text-right">Saldo</th>
+              <SortableHeader column="id" :sort="tableSort" label="ID do título" @change="setTableSort">Título / documento</SortableHeader>
+              <SortableHeader column="contractName" :sort="tableSort" label="Contrato / acesso" @change="setTableSort"
+                >Contrato / acesso</SortableHeader
+              >
+              <SortableHeader column="accountName" :sort="tableSort" label="Conta / filial" @change="setTableSort"
+                >Conta / filial</SortableHeader
+              >
+              <SortableHeader column="dueDate" :sort="tableSort" label="Vencimento" @change="setTableSort">Vencimento</SortableHeader>
+              <SortableHeader class="text-right" column="amount" :sort="tableSort" label="Original" @change="setTableSort"
+                >Original</SortableHeader
+              >
+              <SortableHeader class="text-right" column="paid" :sort="tableSort" label="Recebido" @change="setTableSort"
+                >Recebido</SortableHeader
+              >
+              <SortableHeader class="text-right" column="balance" :sort="tableSort" label="Saldo" @change="setTableSort"
+                >Saldo</SortableHeader
+              >
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">

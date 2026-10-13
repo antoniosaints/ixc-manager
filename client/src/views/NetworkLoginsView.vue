@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "../components/SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { computed, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Network, Search, RotateCcw, Wifi, WifiOff, Users, ArrowUpRight } from "lucide-vue-next";
@@ -33,8 +35,12 @@ const form = reactive(routeFilters()),
   page = ref(1),
   limit = ref(10),
   selected = ref<NetworkLoginRow | null>(null);
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  if (page.value !== 1) page.value = 1;
+  else void reload();
+});
 const params = computed(() => {
-  const p = new URLSearchParams({ ...applied.value, page: String(page.value), limit: String(limit.value) });
+  const p = new URLSearchParams({ ...sortParams(), ...applied.value, page: String(page.value), limit: String(limit.value) });
   if (!p.get("cityId")) p.delete("cityId");
   if (!p.get("branchId")) p.delete("branchId");
   return p;
@@ -217,13 +223,19 @@ function open(row: NetworkLoginRow) {
           <table class="compact-table min-w-[950px]">
             <thead>
               <tr>
-                <th scope="col">Login / ID</th>
-                <th scope="col">Cliente</th>
-                <th scope="col">Cadastro / conexão</th>
-                <th scope="col">Caixa / porta</th>
-                <th scope="col">Cidade / filial</th>
-                <th scope="col">IP / MAC</th>
-                <th scope="col">Contrato</th>
+                <SortableHeader column="login" :sort="tableSort" label="Login / ID" @change="setTableSort">Login / ID</SortableHeader>
+                <SortableHeader column="customerName" :sort="tableSort" label="Cliente" @change="setTableSort">Cliente</SortableHeader>
+                <SortableHeader column="active" :sort="tableSort" label="Cadastro / conexão" @change="setTableSort"
+                  >Cadastro / conexão</SortableHeader
+                >
+                <SortableHeader column="ftthBoxName" :sort="tableSort" label="Caixa / porta" @change="setTableSort"
+                  >Caixa / porta</SortableHeader
+                >
+                <SortableHeader column="city" :sort="tableSort" label="Cidade / filial" @change="setTableSort"
+                  >Cidade / filial</SortableHeader
+                >
+                <SortableHeader column="ip" :sort="tableSort" label="IP / MAC" @change="setTableSort">IP / MAC</SortableHeader>
+                <SortableHeader column="contractId" :sort="tableSort" label="Contrato" @change="setTableSort">Contrato</SortableHeader>
                 <th v-if="auth.can('network.logins.view')" scope="col"><span class="sr-only">Detalhes do login</span></th>
               </tr>
             </thead>

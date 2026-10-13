@@ -1,3 +1,4 @@
+import { columnSortFields, columnOrder } from "../../utils/columnSort.js";
 import { z } from "zod";
 import { loginTechnology } from "./LoginTechnology.js";
 import { IxcReadDatabase, type IxcReadQuery, type IxcReadSession } from "../../integrations/ixc/database/IxcReadDatabase.js";
@@ -5,6 +6,7 @@ import { dateOnly } from "../upgrades/UpgradeService.js";
 import { connectedLoginSql, connectionIp, connectionStatus } from "./LoginConnection.js";
 
 const pageQuery = z.object({
+  ...columnSortFields,
   page: z.coerce.number().int().min(1).max(100000).default(1),
   limit: z.coerce
     .number()
@@ -87,7 +89,7 @@ export function networkBoxesSql(q: BoxQuery): { summary: IxcReadQuery; list: Ixc
     },
     list: {
       name: "network-box-list",
-      sql: `SELECT ${boxColumns} ${base} ${where.sql} ORDER BY b.id DESC LIMIT ? OFFSET ?`,
+      sql: `SELECT ${boxColumns} ${base} ${where.sql} ORDER BY ${columnOrder(q, { name: "b.descricao", active: "b.status", city: "c.nome", capacity: "b.capacidade", activeLogins: "COALESCE(s.activeLogins,0)", onlineLogins: "COALESCE(s.onlineLogins,0)" }, "b.id DESC", "b.id")} LIMIT ? OFFSET ?`,
       params: [...where.params, q.limit, (q.page - 1) * q.limit],
       timeoutSeconds: 5,
     },
@@ -121,7 +123,7 @@ export function networkLoginsSql(boxId: number, q: LoginQuery, loginId?: number)
       sql: `SELECT r.id,r.login,r.tipo_conexao_mapa,r.ativo,r.online,r.ftth_porta,r.id_cliente,r.id_contrato,r.ip,r.mac,r.onu_mac,
       r.ultima_conexao_inicial,r.ultima_conexao_final,r.motivo_desconexao,r.sinal_ultimo_atendimento,r.concentrador,
       c.razao customerName,c.ativo customerActive,ct.id validContractId,ct.contrato contractName,ct.status contractStatus
-      ${from} ORDER BY CASE WHEN r.ftth_porta>0 THEN 0 ELSE 1 END,r.ftth_porta,r.id LIMIT ? OFFSET ?`,
+      ${from} ORDER BY ${columnOrder(q, { port: "NULLIF(r.ftth_porta,0)", login: "r.login", active: "r.ativo", status: `(${connectedLoginSql})`, ip: "r.ip", contractId: "ct.id" }, "CASE WHEN r.ftth_porta>0 THEN 0 ELSE 1 END,r.ftth_porta,r.id", "r.id")} LIMIT ? OFFSET ?`,
       params: [...params, q.limit, (q.page - 1) * q.limit],
       timeoutSeconds: 5,
     } as IxcReadQuery,

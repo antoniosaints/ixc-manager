@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "./SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { computed, reactive, ref, watch } from "vue";
 import { ListFilter, Search, ArrowUpRight, RefreshCw } from "lucide-vue-next";
 import { financePending } from "../financeApi";
@@ -36,11 +38,16 @@ const form = reactive({
   sort: props.sort ?? "oldest",
 });
 const applied = ref({ ...form });
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  if (page.value !== 1) page.value = 1;
+  else void reload();
+});
 const request = computed(() => {
   const params = new URLSearchParams(props.params);
   Object.entries(applied.value).forEach(([k, v]) => params.set(k, v));
   params.set("page", String(page.value));
   params.set("limit", String(limit.value));
+  Object.entries(sortParams()).forEach(([key, value]) => params.set(key, value));
   return params;
 });
 const { data, loading, error, reload } = useLiveQuery((signal) => financePending(request.value, signal));
@@ -55,6 +62,7 @@ watch([page, limit], reload);
 const money = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const date = (s: string | null) => (s ? new Date(`${s}T12:00:00Z`).toLocaleDateString("pt-BR") : "Não informada");
 function apply() {
+  if (form.sort !== applied.value.sort) tableSort.value = null;
   if (form.scope !== "aging") form.bucket = "all";
   if (form.kind === "payable" && form.searchBy === "contractId") {
     form.searchBy = "name";
@@ -167,13 +175,33 @@ function apply() {
         <table class="compact-table min-w-[800px]">
           <thead>
             <tr>
-              <th scope="col" class="!pl-4">{{ data.kind === "receivable" ? "Cliente / contrato" : "Fornecedor" }}</th>
-              <th scope="col">Título / documento</th>
-              <th scope="col">Conta / filial</th>
-              <th scope="col">Vencimento</th>
-              <th scope="col" class="text-right">Valor original</th>
-              <th scope="col" class="text-right">{{ data.kind === "receivable" ? "Recebido" : "Pago" }}</th>
-              <th scope="col" class="!pr-4 text-right">Saldo aberto</th>
+              <SortableHeader
+                class="!pl-4"
+                column="partyName"
+                :sort="tableSort"
+                :label="data.kind === 'receivable' ? 'Cliente / contrato' : 'Fornecedor'"
+                @change="setTableSort"
+                >{{ data.kind === "receivable" ? "Cliente / contrato" : "Fornecedor" }}</SortableHeader
+              >
+              <SortableHeader column="id" :sort="tableSort" label="ID do título" @change="setTableSort">Título / documento</SortableHeader>
+              <SortableHeader column="accountName" :sort="tableSort" label="Conta / filial" @change="setTableSort"
+                >Conta / filial</SortableHeader
+              >
+              <SortableHeader column="dueDate" :sort="tableSort" label="Vencimento" @change="setTableSort">Vencimento</SortableHeader>
+              <SortableHeader class="text-right" column="amount" :sort="tableSort" label="Valor original" @change="setTableSort"
+                >Valor original</SortableHeader
+              >
+              <SortableHeader
+                class="text-right"
+                column="paid"
+                :sort="tableSort"
+                :label="data.kind === 'receivable' ? 'Recebido' : 'Pago'"
+                @change="setTableSort"
+                >{{ data.kind === "receivable" ? "Recebido" : "Pago" }}</SortableHeader
+              >
+              <SortableHeader class="!pr-4 text-right" column="balance" :sort="tableSort" label="Saldo aberto" @change="setTableSort"
+                >Saldo aberto</SortableHeader
+              >
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import SortableHeader from "./SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
+const { tableSort, setTableSort, sortedRows } = useTableSort();
 import { watch } from "vue";
 import { Landmark, Info, RefreshCw } from "lucide-vue-next";
 import { financeBanks } from "../financeApi";
@@ -43,16 +46,32 @@ const date = (value: string) => new Date(`${value}T12:00:00Z`).toLocaleDateStrin
       <table class="compact-table min-w-[860px]">
         <thead>
           <tr>
-            <th scope="col" class="!pl-4">Caixa / banco</th>
-            <th scope="col" class="text-right">Saldo inicial</th>
-            <th scope="col" class="text-right">Saldo na criação</th>
-            <th scope="col" class="text-right">Entradas</th>
-            <th scope="col" class="text-right">Saídas</th>
-            <th scope="col" class="!pr-4 text-right">Saldo final calculado</th>
+            <SortableHeader class="!pl-4" column="name" :sort="tableSort" label="Caixa / banco" @change="setTableSort"
+              >Caixa / banco</SortableHeader
+            >
+            <SortableHeader class="text-right" column="opening" :sort="tableSort" label="Saldo inicial" @change="setTableSort"
+              >Saldo inicial</SortableHeader
+            >
+            <SortableHeader class="text-right" column="openingAdjustment" :sort="tableSort" label="Saldo na criação" @change="setTableSort"
+              >Saldo na criação</SortableHeader
+            >
+            <SortableHeader class="text-right" column="inflow" :sort="tableSort" label="Entradas" @change="setTableSort"
+              >Entradas</SortableHeader
+            >
+            <SortableHeader class="text-right" column="outflow" :sort="tableSort" label="Saídas" @change="setTableSort"
+              >Saídas</SortableHeader
+            >
+            <SortableHeader class="!pr-4 text-right" column="closing" :sort="tableSort" label="Saldo final calculado" @change="setTableSort"
+              >Saldo final calculado</SortableHeader
+            >
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
-          <tr v-for="account in data.accounts" :key="account.id" class="hover:bg-slate-50">
+          <tr
+            v-for="account in sortedRows(data.accounts, (account, column) => account[column as keyof typeof account])"
+            :key="account.id"
+            class="hover:bg-slate-50"
+          >
             <td class="max-w-72 !pl-4">
               <strong class="block truncate font-semibold" :title="account.name">{{ account.name }}</strong
               ><span class="compact-secondary"

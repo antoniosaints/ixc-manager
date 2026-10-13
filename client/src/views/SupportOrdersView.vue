@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "../components/SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { computed, defineAsyncComponent, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Wrench, Search, RotateCcw, ArrowUpRight, ListFilter, Clock3, Flag, ClipboardList } from "lucide-vue-next";
@@ -39,7 +41,12 @@ const draft = reactive(routeFilters()),
   applied = ref(routeFilters()),
   page = ref(1),
   limit = ref(10);
-const params = computed(() => new URLSearchParams({ ...applied.value, page: String(page.value), limit: String(limit.value) }));
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  page.value = 1;
+});
+const params = computed(
+  () => new URLSearchParams({ ...sortParams(), ...applied.value, page: String(page.value), limit: String(limit.value) })
+);
 const { data, loading, error, reload } = useLiveQuery((signal) => supportApi.orders(params.value, signal));
 const {
   data: filters,
@@ -59,6 +66,7 @@ watch(
   }
 );
 function apply() {
+  if (draft.order !== applied.value.order) tableSort.value = null;
   const values = { ...draft, search: draft.search.trim() };
   if (Object.entries(values).every(([key, value]) => value === applied.value[key as keyof typeof defaults])) {
     if (page.value !== 1) page.value = 1;
@@ -251,11 +259,19 @@ watch(
             </caption>
             <thead>
               <tr>
-                <th scope="col">OS / assunto</th>
-                <th scope="col">Cliente / contrato</th>
-                <th scope="col">Status / prioridade</th>
-                <th scope="col">Técnico / filial</th>
-                <th scope="col">Abertura / agendamento</th>
+                <SortableHeader column="id" :sort="tableSort" label="ID da OS" @change="setTableSort">OS / assunto</SortableHeader>
+                <SortableHeader column="customerName" :sort="tableSort" label="Cliente / contrato" @change="setTableSort"
+                  >Cliente / contrato</SortableHeader
+                >
+                <SortableHeader column="priority" :sort="tableSort" label="Prioridade" @change="setTableSort"
+                  >Status / prioridade</SortableHeader
+                >
+                <SortableHeader column="technician" :sort="tableSort" label="Técnico / filial" @change="setTableSort"
+                  >Técnico / filial</SortableHeader
+                >
+                <SortableHeader column="openedAt" :sort="tableSort" label="Data de abertura" @change="setTableSort"
+                  >Abertura / agendamento</SortableHeader
+                >
                 <th scope="col"><span class="sr-only">Detalhes</span></th>
               </tr>
             </thead>
@@ -283,18 +299,17 @@ watch(
                     @click.stop
                     >{{ row.customerName ?? `Cliente #${row.customerId}` }}
                     <ArrowUpRight class="inline h-3 w-3" aria-hidden="true" /></RouterLink
-                  ><span v-else>{{ row.customerName ?? "Sem cliente vinculado" }}</span
-                  >
+                  ><span v-else>{{ row.customerName ?? "Sem cliente vinculado" }}</span>
                   <div class="flex flex-wrap items-center gap-1">
-                  <span class="mt-0.5 block text-[10px] text-slate-500"
-                    >{{ row.customerId ? `Cliente #${row.customerId}` : "Cliente não localizado"
-                    }}<span v-if="row.customerActive === false"> · Inativo</span></span
-                  ><RecordQuickLink
-                    v-if="row.contractId"
-                    :target="{ kind: 'contract', id: row.contractId, module: 'support' }"
-                    :label="`Contrato #${row.contractId}`"
-                    class="mt-0.5 text-[10px] text-indigo-600"
-                  />
+                    <span class="mt-0.5 block text-[10px] text-slate-500"
+                      >{{ row.customerId ? `Cliente #${row.customerId}` : "Cliente não localizado"
+                      }}<span v-if="row.customerActive === false"> · Inativo</span></span
+                    ><RecordQuickLink
+                      v-if="row.contractId"
+                      :target="{ kind: 'contract', id: row.contractId, module: 'support' }"
+                      :label="`Contrato #${row.contractId}`"
+                      class="mt-0.5 text-[10px] text-indigo-600"
+                    />
                   </div>
                 </td>
                 <td class="whitespace-nowrap">

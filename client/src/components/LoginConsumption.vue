@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "./SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { ref, computed } from "vue";
 import { ArrowDownToLine, ArrowUpFromLine, CalendarDays, RefreshCw } from "lucide-vue-next";
 import { loginToolsApi, type LoginToolScope } from "../loginToolsApi";
@@ -18,7 +20,14 @@ const from = ref(localDate(start)),
 const { data, loading, error, reload } = useLiveQuery((signal) =>
   loginToolsApi.consumption(props.loginId, props.scope, period.value.from, period.value.to, signal)
 );
-const rows = computed(() => data.value?.[mode.value] ?? []);
+const { tableSort, setTableSort, sortedRows } = useTableSort();
+const rows = computed(() =>
+  sortedRows(data.value?.[mode.value], (row, column) => {
+    if (column === "date") return row.date;
+    const bytes = column === "total" ? total(row.downloadBytes, row.uploadBytes) : row[column as "downloadBytes" | "uploadBytes"];
+    return bytes == null ? null : BigInt(bytes);
+  })
+);
 const formatBytes = (value: string | null | undefined) =>
   value == null ? "Não disponível" : `${(Number(value) / 1_000_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} GB`;
 const total = (download: string | null, upload: string | null) =>
@@ -86,10 +95,12 @@ const dateLabel = (value: string) =>
         <table class="compact-table w-full min-w-[480px]">
           <thead>
             <tr>
-              <th scope="col">{{ mode === "daily" ? "Dia" : "Mês" }}</th>
-              <th scope="col">Download</th>
-              <th scope="col">Upload</th>
-              <th scope="col">Total</th>
+              <SortableHeader column="date" :sort="tableSort" :label="mode === 'daily' ? 'Dia' : 'Mês'" @change="setTableSort">{{
+                mode === "daily" ? "Dia" : "Mês"
+              }}</SortableHeader>
+              <SortableHeader column="downloadBytes" :sort="tableSort" label="Download" @change="setTableSort">Download</SortableHeader>
+              <SortableHeader column="uploadBytes" :sort="tableSort" label="Upload" @change="setTableSort">Upload</SortableHeader>
+              <SortableHeader column="total" :sort="tableSort" label="Total" @change="setTableSort">Total</SortableHeader>
               <th scope="col">Volume</th>
             </tr>
           </thead>

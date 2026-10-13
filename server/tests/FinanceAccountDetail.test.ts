@@ -63,6 +63,26 @@ function fixture() {
   return { db, reader: { withSnapshot: async <T>(read: (session: IxcReadSession) => Promise<T>) => read({ select }) } };
 }
 describe("Composição das contas financeiras", () => {
+  it("ordena valores e vínculos antes da paginação, sem alterar os totais", async () => {
+    const { db, reader } = fixture();
+    try {
+      const service = new FinanceAccountDetailService(reader);
+      const query = { ...period, branchId: 1, regime: "cash" as const };
+      const original = await service.list(query);
+      const credit = await service.list({ ...query, sortColumn: "credit", sortDirection: "desc" });
+      expect(credit.items.map((row) => row.id)).toEqual(["1", "2", "4", "3"]);
+      expect(credit.value).toBe(original.value);
+      expect(credit.total).toBe(original.total);
+      const dueDate = await service.list({ ...query, sortColumn: "dueDate", sortDirection: "asc" });
+      expect(dueDate.items.map((row) => row.id)).toEqual(["1", "2", "3", "4"]);
+      const value = await service.list({ ...query, sortColumn: "contribution", sortDirection: "asc" });
+      expect(value.items.map((row) => row.id)).toEqual(["3", "4", "2", "1"]);
+      const cleared = await service.list(query);
+      expect(cleared.items.map((row) => row.id)).toEqual(original.items.map((row) => row.id));
+    } finally {
+      db.close();
+    }
+  });
   it("explains partial receipts, reversals and unlinked entries without summing title originals or duplicating joins", async () => {
     const { db, reader } = fixture();
     try {

@@ -1,3 +1,4 @@
+import { columnOrder, type ColumnSortQuery } from "../utils/columnSort.js";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { db } from "./database.js";
 import type { RiskContext, RiskResult } from "../types/retention.js";
@@ -25,20 +26,22 @@ export interface CustomerRow extends RowDataPacket {
 const dateDaysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 19).replace("T", " ");
 
 export class RetentionRepository {
-  async listCustomers(filters: {
-    riskLevel?: string;
-    city?: string;
-    minScore?: number;
-    maxScore?: number;
-    search?: string;
-    blocked?: boolean;
-    overdue?: boolean;
-    openSupport?: boolean;
-    attentionOnly?: boolean;
-    workflowStatus: "OPEN" | "RESOLVED" | "ALL";
-    page: number;
-    limit: number;
-  }): Promise<{ items: CustomerRow[]; total: number }> {
+  async listCustomers(
+    filters: {
+      riskLevel?: string;
+      city?: string;
+      minScore?: number;
+      maxScore?: number;
+      search?: string;
+      blocked?: boolean;
+      overdue?: boolean;
+      openSupport?: boolean;
+      attentionOnly?: boolean;
+      workflowStatus: "OPEN" | "RESOLVED" | "ALL";
+      page: number;
+      limit: number;
+    } & ColumnSortQuery
+  ): Promise<{ items: CustomerRow[]; total: number }> {
     const clauses = [
       "c.active = 'S'",
       "ct.status <> 'I'",
@@ -95,7 +98,7 @@ export class RetentionRepository {
     const from = `${joins.join(" ")} WHERE ${clauses.join(" AND ")}`;
     const [count] = await db.query<RowDataPacket[]>(`SELECT COUNT(*) total ${from}`, params);
     const [rows] = await db.query<CustomerRow[]>(
-      `SELECT c.id customer_id, c.name, COALESCE(city.label,c.city) city, c.neighborhood, ct.plan_name, ct.branch_id, ct.id contract_id, rs.score, ${currentRiskLevelSql} risk_level, rs.financial_score, rs.support_score, rs.network_score, rs.contract_score, rs.satisfaction_score, rs.calculated_at, COALESCE(workflow.status,'OPEN') workflow_status, (attention.contract_id IS NOT NULL) attention_critical ${from} ORDER BY attention.contract_id IS NOT NULL DESC, rs.score DESC, rs.calculated_at DESC LIMIT ? OFFSET ?`,
+      `SELECT c.id customer_id, c.name, COALESCE(city.label,c.city) city, c.neighborhood, ct.plan_name, ct.branch_id, ct.id contract_id, rs.score, ${currentRiskLevelSql} risk_level, rs.financial_score, rs.support_score, rs.network_score, rs.contract_score, rs.satisfaction_score, rs.calculated_at, COALESCE(workflow.status,'OPEN') workflow_status, (attention.contract_id IS NOT NULL) attention_critical ${from} ORDER BY ${columnOrder(filters, { name: "c.name", score: "rs.score", city: "COALESCE(city.label,c.city)", plan_name: "ct.plan_name", financial_score: "rs.financial_score", support_score: "rs.support_score", network_score: "rs.network_score", calculated_at: "rs.calculated_at" }, "attention.contract_id IS NOT NULL DESC, rs.score DESC, rs.calculated_at DESC", "ct.id")} LIMIT ? OFFSET ?`,
       [...params, filters.limit, (filters.page - 1) * filters.limit]
     );
     return { items: rows, total: Number(count[0]?.total ?? 0) };

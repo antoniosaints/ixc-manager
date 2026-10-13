@@ -1,3 +1,4 @@
+import { columnSortFields, columnOrder } from "../../utils/columnSort.js";
 import { z } from "zod";
 import { IxcReadDatabase, type IxcReadQuery, type IxcReadSession } from "../../integrations/ixc/database/IxcReadDatabase.js";
 import { mapDate } from "../../integrations/ixc/database/maps/valueMappers.js";
@@ -11,6 +12,7 @@ const optionalDate = z
   .default("");
 export const supportOrdersQuery = z
   .object({
+    ...columnSortFields,
     page: z.coerce.number().int().min(1).max(100000).default(1),
     limit: z.coerce
       .number()
@@ -140,7 +142,7 @@ export function supportOrdersSql(input: z.input<typeof supportOrdersQuery>, now 
     t.id_assunto subjectId,a.assunto subjectName,t.status status,t.prioridade priority,
     t.data_abertura openedAt,t.data_agenda scheduledAt,t.data_fechamento closedAt,
     f.id technicianId,f.funcionario technician,b.id branchId,COALESCE(NULLIF(b.fantasia,''),b.razao) branch,
-    CASE WHEN (${lateSql}) THEN 1 ELSE 0 END overdue ${join} ${where} ORDER BY ${order} LIMIT ? OFFSET ?`,
+    CASE WHEN (${lateSql}) THEN 1 ELSE 0 END overdue ${join} ${where} ORDER BY ${columnOrder(q, { id: "t.id", customerName: "c.razao", priority: "CASE t.prioridade WHEN 'B' THEN 0 WHEN 'N' THEN 1 WHEN 'A' THEN 2 WHEN 'C' THEN 3 END", technician: "f.funcionario", openedAt: "t.data_abertura" }, order, "t.id")} LIMIT ? OFFSET ?`,
   };
   return { q, summary, list };
 }

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useTableSort } from "../composables/useTableSort";
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  void load(true);
+});
 import { ClipboardList, CheckCircle2, Search, Siren, ChevronLeft, RefreshCw } from "lucide-vue-next";
 
 import { computed, onMounted, ref, watch } from "vue";
@@ -32,7 +36,7 @@ async function load(resetPage = false) {
   loading.value = true;
   error.value = "";
   try {
-    const query = new URLSearchParams({ page: String(page.value), limit: String(limit) });
+    const query = new URLSearchParams({ ...sortParams(), page: String(page.value), limit: String(limit) });
     if (search.value.trim()) query.set("search", search.value.trim());
     if (isAttention.value) query.set("attentionOnly", "true");
     else query.set("workflowStatus", "RESOLVED");
@@ -109,6 +113,8 @@ watch(
         <img src="/infinite-spinner.svg" alt="" class="h-12 w-20" />Carregando clientes…
       </div>
       <ChurnCustomerTable
+        :table-sort="tableSort"
+        @sort-change="setTableSort"
         v-else
         :customers="customers"
         :can-view-details="auth.canViewCustomerDetails"

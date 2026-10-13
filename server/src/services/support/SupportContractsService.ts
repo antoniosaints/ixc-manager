@@ -1,3 +1,4 @@
+import { columnSortFields, columnOrder } from "../../utils/columnSort.js";
 import { z } from "zod";
 import { IxcReadDatabase, type IxcReadQuery, type IxcReadSession } from "../../integrations/ixc/database/IxcReadDatabase.js";
 import { mapDate } from "../../integrations/ixc/database/maps/valueMappers.js";
@@ -5,6 +6,7 @@ import { mapDate } from "../../integrations/ixc/database/maps/valueMappers.js";
 const optionalId = z.coerce.number().int().nonnegative().safe().default(0);
 export const supportContractsQuery = z
   .object({
+    ...columnSortFields,
     page: z.coerce.number().int().min(1).max(100000).default(1),
     limit: z.coerce
       .number()
@@ -84,7 +86,7 @@ export function supportContractsSql(input: z.input<typeof supportContractsQuery>
       cc.status_internet internetStatus,cc.contrato_suspenso suspended,cc.id_vd_contrato planId,p.nome planName,
       cc.id_filial branchId,COALESCE(NULLIF(b.fantasia,''),b.razao) branch,city.nome city,
       CASE WHEN cc.endereco_padrao_cliente='S' THEN c.bairro ELSE cc.bairro END neighborhood,
-      cc.data_ativacao activatedAt ${join} ${where} ORDER BY c.razao,cc.id LIMIT ? OFFSET ?`,
+      cc.data_ativacao activatedAt ${join} ${where} ORDER BY ${columnOrder(q, { customerName: "c.razao", planName: "p.nome", status: "cc.status", internetStatus: "cc.status_internet", city: "city.nome", activatedAt: "cc.data_ativacao" }, "c.razao,cc.id", "cc.id")} LIMIT ? OFFSET ?`,
   };
   return { q, total, list };
 }

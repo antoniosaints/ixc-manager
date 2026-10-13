@@ -1,3 +1,4 @@
+import { ixcColumnOrder, type ColumnSortQuery } from "../../utils/columnSort.js";
 import { contractExtras, equipmentTarget, loginDetails, secretFields, type SecretField } from "./UpgradeDetails.js";
 import { IxcApiService, type IxcListRequest } from "../../integrations/ixc/IxcApiService.js";
 import { LoginNetworkService } from "./LoginNetworkService.js";
@@ -6,7 +7,7 @@ import { LoginSignalService } from "./LoginSignalService.js";
 type Row = Record<string, unknown>;
 type Reader = Pick<IxcApiService, "listPage">;
 type Grid = NonNullable<IxcListRequest["gridParam"]>;
-export interface UpgradeQuery {
+export interface UpgradeQuery extends ColumnSortQuery {
   status: "eligible" | "expired" | "expiring" | "missing";
   days: number;
   search: string;
@@ -165,14 +166,23 @@ export class UpgradeService {
     return grid;
   }
 
-  private contractRequest(grid: Grid, limit: number): IxcListRequest {
+  private contractRequest(grid: Grid, limit: number, query: ColumnSortQuery = {}): IxcListRequest {
     return {
       qtype: "cliente_contrato.status",
       query: "A",
       oper: "=",
       gridParam: grid,
-      sortname: "cliente_contrato.data_expiracao",
-      sortorder: "asc",
+      ...ixcColumnOrder(
+        query,
+        {
+          contractId: "cliente_contrato.id",
+          contractName: "cliente_contrato.contrato",
+          expiresAt: "cliente_contrato.data_expiracao",
+          internetStatus: "cliente_contrato.status_internet",
+        },
+        "cliente_contrato.data_expiracao",
+        "asc"
+      ),
       rp: limit,
     };
   }
@@ -225,7 +235,7 @@ export class UpgradeService {
       return { items: [], total: 0, page: query.page, limit: query.limit, referenceDate: today, queriedAt: this.now().toISOString() };
     const result = await this.read(
       "cliente_contrato",
-      this.contractRequest([...common, ...expirationFilters(query.status, query.days, today)], query.limit),
+      this.contractRequest([...common, ...expirationFilters(query.status, query.days, today)], query.limit, query),
       query.page
     );
     return {
@@ -292,7 +302,7 @@ export class UpgradeService {
     // Bound live work; do not download the whole customer base to produce a small work list.
     if (common !== null) {
       for (let page = 1; page <= 20 && picked.length < needed; page++) {
-        const result = await this.read("cliente_contrato", this.contractRequest(grid, 100), page);
+        const result = await this.read("cliente_contrato", this.contractRequest(grid, 100, query), page);
         for (const row of result.rows) {
           const customerId = positiveId(row.id_cliente);
           const contractId = positiveId(row.id);
@@ -415,15 +425,24 @@ export class UpgradeService {
     return { value: value == null || String(value).trim() === "" ? null : String(value), queriedAt: this.now().toISOString() };
   }
 
-  async plans(query: { search: string; page: number; limit: number }) {
+  async plans(query: { search: string; page: number; limit: number } & ColumnSortQuery) {
     const { rows, total } = await this.read(
       "vd_contratos",
       {
         qtype: "vd_contratos.ativo",
         query: "S",
         oper: "=",
-        sortname: "vd_contratos.id",
-        sortorder: "desc",
+        ...ixcColumnOrder(
+          query,
+          {
+            name: "vd_contratos.nome",
+            value: "vd_contratos.valor_contrato",
+            fidelityMonths: "vd_contratos.fidelidade",
+            branchId: "vd_contratos.id_filial",
+          },
+          "vd_contratos.id",
+          "desc"
+        ),
         rp: query.limit,
         gridParam: query.search ? [{ TB: "vd_contratos.nome", OP: "L", P: query.search }] : [],
       },

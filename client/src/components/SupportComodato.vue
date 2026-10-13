@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "./SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { Package, RefreshCw } from "lucide-vue-next";
 
 import { computed, ref, watch } from "vue";
@@ -14,7 +16,11 @@ const props = defineProps<{ contractId: string }>();
 const auth = useAuthStore();
 const page = ref(1),
   limit = ref(10);
-const params = computed(() => new URLSearchParams({ page: String(page.value), limit: String(limit.value) }));
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  if (page.value !== 1) page.value = 1;
+  else void reload();
+});
+const params = computed(() => new URLSearchParams({ ...sortParams(), page: String(page.value), limit: String(limit.value) }));
 const { data, loading, error, reload } = useLiveQuery((signal) => supportApi.comodato(props.contractId, params.value, signal));
 watch([page, limit], reload);
 const status = (value: string | null) => (value === "E" ? "Emprestado" : value ? `Status ${value}` : "Não informado");
@@ -45,12 +51,29 @@ const status = (value: string | null) => (value === "E" ? "Emprestado" : value ?
         <table class="w-full min-w-[850px] text-left text-xs">
           <thead class="bg-slate-50 text-[10px] uppercase text-slate-500">
             <tr>
-              <th class="px-4 py-2">Equipamento / Produto</th>
-              <th class="px-3 py-2">Status / Movimento</th>
-              <th class="px-3 py-2">Patrimônio</th>
-              <th class="px-3 py-2">Série / MAC</th>
-              <th class="px-3 py-2">Data / Quantidade</th>
-              <th class="px-4 py-2">Login vinculado</th>
+              <SortableHeader
+                class="px-4 py-2"
+                column="description"
+                :sort="tableSort"
+                label="Descrição do equipamento"
+                @change="setTableSort"
+                >Equipamento / Produto</SortableHeader
+              >
+              <SortableHeader class="px-3 py-2" column="status" :sort="tableSort" label="Status / Movimento" @change="setTableSort"
+                >Status / Movimento</SortableHeader
+              >
+              <SortableHeader class="px-3 py-2" column="assetNumber" :sort="tableSort" label="Número do patrimônio" @change="setTableSort"
+                >Patrimônio</SortableHeader
+              >
+              <SortableHeader class="px-3 py-2" column="serial" :sort="tableSort" label="Série / MAC" @change="setTableSort"
+                >Série / MAC</SortableHeader
+              >
+              <SortableHeader class="px-3 py-2" column="date" :sort="tableSort" label="Data do movimento" @change="setTableSort"
+                >Data / Quantidade</SortableHeader
+              >
+              <SortableHeader class="px-4 py-2" column="loginId" :sort="tableSort" label="Login vinculado" @change="setTableSort"
+                >Login vinculado</SortableHeader
+              >
             </tr>
           </thead>
           <tbody>

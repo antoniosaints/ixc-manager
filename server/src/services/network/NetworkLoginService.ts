@@ -1,3 +1,4 @@
+import { columnSortFields, columnOrder } from "../../utils/columnSort.js";
 import { z } from "zod";
 import { IxcReadDatabase, type IxcReadQuery } from "../../integrations/ixc/database/IxcReadDatabase.js";
 import { networkLoginDto } from "./NetworkService.js";
@@ -7,6 +8,7 @@ import { compatibleOnuSql } from "../upgrades/LoginOnuLink.js";
 const id = z.coerce.number().int().positive().safe();
 export const loginListQuery = z
   .object({
+    ...columnSortFields,
     page: z.coerce.number().int().min(1).max(100000).default(1),
     limit: z.coerce
       .number()
@@ -107,7 +109,7 @@ export function loginListSql(q: Query) {
       ct.id validContractId,ct.contrato contractName,ct.status contractStatus,
       ${boxId} ftthBoxId,b.descricao ftthBoxName,CASE WHEN r.id_caixa_ftth>0 THEN 'login' ELSE 'onu' END ftthBoxSource,
       city.id cityId,city.nome city,branch.id branchId,COALESCE(NULLIF(branch.fantasia,''),branch.razao) branch
-      ${base}${boxJoin} ${filter.sql} ORDER BY r.id DESC LIMIT ? OFFSET ?`,
+      ${base}${boxJoin} ${filter.sql} ORDER BY ${columnOrder(q, { login: "r.login", customerName: "c.razao", active: "r.ativo", ftthBoxName: "b.descricao", city: "city.nome", ip: "r.ip", contractId: "ct.id" }, "r.id DESC", "r.id")} LIMIT ? OFFSET ?`,
       params: [...filter.params, q.limit, (q.page - 1) * q.limit],
       timeoutSeconds: 5,
     },

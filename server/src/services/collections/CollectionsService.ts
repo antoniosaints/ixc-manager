@@ -1,3 +1,4 @@
+import { columnSortFields, columnOrder } from "../../utils/columnSort.js";
 import { z } from "zod";
 import { IxcReadDatabase, type IxcReadSession, type IxcReadQuery } from "../../integrations/ixc/database/IxcReadDatabase.js";
 import { decimalToUnits, mapDate, mapIdentifier } from "../../integrations/ixc/database/maps/valueMappers.js";
@@ -7,6 +8,7 @@ import { contactNumbers } from "../upgrades/UpgradeDetails.js";
 const dateInput = z.string().refine((s) => mapDate(s) === s, "Data inválida");
 export const collectionsQuery = z
   .object({
+    ...columnSortFields,
     scope: z.enum(["overdue", "open"]).default("overdue"),
     bucket: z.enum(["all", "1-30", "31-60", "61-90", "91+", "upcoming"]).default("all"),
     status: z.enum(["all", "active", "inactive"]).default("all"),
@@ -180,7 +182,7 @@ export function collectionsSql(
       "collections-customers",
       `SELECT g.*,c.razao name,c.ativo active,c.cnpj_cpf document,c.fone,c.telefone_celular,c.telefone_comercial,c.whatsapp,
  city.nome city,c.bairro neighborhood,c.email FROM (${aggregate}) g JOIN cliente c ON c.id=g.customerId LEFT JOIN cidade city ON city.id=c.cidade
- ORDER BY ${order} LIMIT ? OFFSET ?`,
+ ORDER BY ${columnOrder(options.customerId ? {} : q, { name: "c.razao", city: "city.nome", oldestDue: "g.oldestDue", titles: "g.titles", balance: "g.balance", overdueBalance: "g.overdueBalance" }, order, "c.id")} LIMIT ? OFFSET ?`,
       [today, today, today, ...scope.params, options.take ?? q.limit, options.take ? 0 : (q.page - 1) * q.limit]
     ),
     titles: query(
@@ -191,7 +193,7 @@ export function collectionsSql(
  t.aguardando_confirmacao_pagamento awaitingConfirmation,t.em_processamento processing,t.em_cobranca inCollection,DATEDIFF(?,t.data_vencimento) daysLate
  ${joins} LEFT JOIN cliente_contrato cc ON cc.id=t.id_contrato AND cc.id_cliente=t.id_cliente
  LEFT JOIN planejamento_analitico a ON a.id=t.id_conta LEFT JOIN filial f ON f.id=t.filial_id
- WHERE ${scope.sql} ORDER BY t.data_vencimento,t.id LIMIT ? OFFSET ?`,
+ WHERE ${scope.sql} ORDER BY ${columnOrder(options.customerId ? q : {}, { id: "t.id", contractName: "cc.contrato", accountName: "a.planejamento_analitico", dueDate: "t.data_vencimento", amount: "t.valor", paid: "t.valor_recebido", balance: "t.valor_aberto" }, "t.data_vencimento,t.id", "t.id")} LIMIT ? OFFSET ?`,
       [today, ...scope.params, q.limit, (q.page - 1) * q.limit]
     ),
     titleCount: query(

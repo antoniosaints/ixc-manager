@@ -73,6 +73,45 @@ function fixture(clock: () => Date = now) {
   return { sql, select, reader, service: new DirectRetentionService(reader, clock) };
 }
 describe("Churn direto sem processamento em segundo plano", () => {
+  it("ordena a mesma análise antes de paginar e volta à prioridade padrão ao limpar", async () => {
+    const { sql, service } = fixture();
+    const filters = { workflowStatus: "ALL" as const, page: 1, limit: 10 };
+    try {
+      const original = await service.listCustomers(filters);
+      const all = await service.listCustomers({
+        ...filters,
+        snapshotId: original.snapshotId,
+        sortColumn: "financial_score",
+        sortDirection: "asc",
+      });
+      expect(all.items.map((row) => row.financial_score)).toEqual(
+        [...original.items.map((row) => row.financial_score)].sort((a, b) => a - b)
+      );
+      const first = await service.listCustomers({
+        ...filters,
+        snapshotId: original.snapshotId,
+        limit: 1,
+        sortColumn: "financial_score",
+        sortDirection: "asc",
+      });
+      const second = await service.listCustomers({
+        ...filters,
+        snapshotId: original.snapshotId,
+        limit: 1,
+        page: 2,
+        sortColumn: "financial_score",
+        sortDirection: "asc",
+      });
+      expect(first.items[0]?.contract_id).toBe(all.items[0]?.contract_id);
+      expect(second.items[0]?.contract_id).toBe(all.items[1]?.contract_id);
+      const cleared = await service.listCustomers({ ...filters, snapshotId: original.snapshotId });
+      expect(cleared.items.map((row) => row.contract_id)).toEqual(original.items.map((row) => row.contract_id));
+      expect(all.total).toBe(original.total);
+    } finally {
+      await service.close();
+      sql.close();
+    }
+  });
   it("reutiliza somente a navegação explícita por até 30s, relê tratativas e não reaproveita detalhes individuais", async () => {
     let time = now().getTime();
     const { sql, reader, service } = fixture(() => new Date(time));

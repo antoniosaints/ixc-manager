@@ -1,3 +1,4 @@
+import { columnSortFields, columnOrder } from "../../utils/columnSort.js";
 import { z } from "zod";
 import { financeQuery } from "./FinanceService.js";
 import { IxcReadDatabase, type IxcReadSession, type IxcReadQuery } from "../../integrations/ixc/database/IxcReadDatabase.js";
@@ -7,6 +8,7 @@ import { addDays } from "../upgrades/UpgradeService.js";
 
 export const accountDetailQuery = z
   .object({
+    ...columnSortFields,
     from: z.string(),
     to: z.string(),
     accountId: z.coerce.number().int().positive().safe(),
@@ -46,22 +48,40 @@ export function accountDetailSql(input: AccountDetailQuery) {
       COUNT(DISTINCT CASE WHEN t.id_pagar>0 THEN t.id_pagar END) payableTitles,
       SUM(CASE WHEN COALESCE(t.id_receber,0)<=0 AND COALESCE(t.id_pagar,0)<=0 THEN 1 ELSE 0 END) unlinked ${base}`,
   };
+  const order = columnOrder(
+    query,
+    {
+      day: "t.data",
+      partyName: "COALESCE(c.razao,f.razao)",
+      dueDate: "COALESCE(r.data_vencimento,v.data_vencimento)",
+      amount: "COALESCE(r.valor,v.valor)",
+      debit: "t.debito",
+      credit: "t.credito",
+      contribution:
+        query.basis === "ledger" ? "(t.credito-t.debito)" : "CASE WHEN a.tipo='R' THEN t.credito-t.debito ELSE t.debito-t.credito END",
+    },
+    "t.data DESC,t.id DESC",
+    "t.id"
+  );
+  const joinedBase = base.replace(
+    "    WHERE t.data",
+    `
+    LEFT JOIN fn_areceber r ON r.id=t.id_receber
+    LEFT JOIN cliente c ON c.id=r.id_cliente
+    LEFT JOIN fn_apagar v ON v.id=t.id_pagar
+    LEFT JOIN fornecedor f ON f.id=v.id_fornecedor
+    WHERE t.data`
+  );
   const details: IxcReadQuery = {
     name: "finance-account-composition-rows",
     timeoutSeconds: 5,
-    sql: `SELECT m.id,m.data day,m.documento document,m.historico history,m.filial_id branchId,
-      m.credito credit,m.debito debit, NULLIF(m.id_receber,0) receivableId,NULLIF(m.id_pagar,0) payableId,
+    sql: `SELECT t.id,t.data day,t.documento document,t.historico history,t.filial_id branchId,
+      t.credito credit,t.debito debit, NULLIF(t.id_receber,0) receivableId,NULLIF(t.id_pagar,0) payableId,
       r.documento receivableDocument,r.data_vencimento receivableDueDate,r.valor receivableAmount,
       r.status receivableStatus,r.id_cliente customerId,c.razao customerName,r.id_contrato contractId,
       v.documento payableDocument,v.data_vencimento payableDueDate,v.valor payableAmount,
       v.status payableStatus,v.id_fornecedor supplierId,f.razao supplierName
-      FROM (SELECT t.id ${base} ORDER BY t.data DESC,t.id DESC LIMIT ? OFFSET ?) selected
-      JOIN fn_movim_finan m ON m.id=selected.id
-      LEFT JOIN fn_areceber r ON r.id=m.id_receber
-      LEFT JOIN cliente c ON c.id=r.id_cliente
-      LEFT JOIN fn_apagar v ON v.id=m.id_pagar
-      LEFT JOIN fornecedor f ON f.id=v.id_fornecedor
-      ORDER BY m.data DESC,m.id DESC`,
+      ${joinedBase} ORDER BY ${order} LIMIT ? OFFSET ?`,
     params: [...params, query.limit, (query.page - 1) * query.limit],
   };
   return { query, summary, details };

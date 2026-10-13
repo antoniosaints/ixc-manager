@@ -1,8 +1,9 @@
+import { ixcColumnOrder, type ColumnSortQuery } from "../../utils/columnSort.js";
 import { IxcApiService, type IxcListRequest } from "../../integrations/ixc/IxcApiService.js";
 import { dateOnly } from "../upgrades/UpgradeService.js";
 type Row = Record<string, unknown>;
 type Reader = Pick<IxcApiService, "listPage">;
-type Page = { page: number; limit: number };
+type Page = { page: number; limit: number } & ColumnSortQuery;
 const text = (v: unknown) => (v == null ? null : String(v).trim() || null);
 const id = (v: unknown) => (/^\d+$/.test(String(v)) && Number.isSafeInteger(Number(v)) && Number(v) > 0 ? Number(v) : null);
 const fail = (message: string, statusCode = 502) => Object.assign(new Error(message), { statusCode });
@@ -61,8 +62,21 @@ export class ContractItemsService {
         qtype: "view_vd_contratos_produtos_gen.cliente_contrato_id",
         query: String(contractId),
         oper: "=",
-        sortname: "view_vd_contratos_produtos_gen.id",
-        sortorder: "asc",
+        ...ixcColumnOrder(
+          page,
+          {
+            description: "view_vd_contratos_produtos_gen.descricao",
+            quantity: "view_vd_contratos_produtos_gen.qtde",
+            unitPrice: "view_vd_contratos_produtos_gen.valor_unit",
+            gross: "view_vd_contratos_produtos_gen.valor_bruto",
+            discount: "view_vd_contratos_produtos_gen.valor_desconto",
+            surcharge: "view_vd_contratos_produtos_gen.valor_acrescimo",
+            untilDue: "view_vd_contratos_produtos_gen.valor_ate_vencimento",
+            net: "view_vd_contratos_produtos_gen.valor_liquido",
+          },
+          "view_vd_contratos_produtos_gen.id",
+          "asc"
+        ),
         rp: page.limit,
       },
       page.page,
@@ -130,8 +144,20 @@ export class ContractItemsService {
         qtype: "cliente_contrato_servicos.id_contrato",
         query: String(contractId),
         oper: "=",
-        sortname: "cliente_contrato_servicos.id",
-        sortorder: "desc",
+        ...ixcColumnOrder(
+          page,
+          {
+            description: "cliente_contrato_servicos.descricao",
+            status: "cliente_contrato_servicos.status",
+            quantity: "cliente_contrato_servicos.quantidade",
+            unitPrice: "cliente_contrato_servicos.valor_unitario",
+            total: "cliente_contrato_servicos.valor_total",
+            recurring: "cliente_contrato_servicos.repetir",
+            date: "cliente_contrato_servicos.data",
+          },
+          "cliente_contrato_servicos.id",
+          "desc"
+        ),
         rp: page.limit,
         gridParam: [{ TB: "cliente_contrato_servicos.tipo_acres_desc", OP: "=", P: "A" }],
       },

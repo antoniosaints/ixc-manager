@@ -1,3 +1,4 @@
+import { ixcColumnOrder, type ColumnSortQuery } from "../../utils/columnSort.js";
 import { IxcApiService, type IxcListRequest } from "../../integrations/ixc/IxcApiService.js";
 import { contactNumbers, loginDetails } from "../upgrades/UpgradeDetails.js";
 import { UpgradeService, dateOnly } from "../upgrades/UpgradeService.js";
@@ -5,7 +6,7 @@ import { LoginNetworkService } from "../upgrades/LoginNetworkService.js";
 
 type Row = Record<string, unknown>;
 type Reader = Pick<IxcApiService, "listPage">;
-export interface SupportPage {
+export interface SupportPage extends ColumnSortQuery {
   page: number;
   limit: number;
 }
@@ -162,7 +163,12 @@ export class SupportService {
         query: customerIds ? customerIds.join(",") : query.search || "0",
         oper: customerIds ? "IN" : query.search ? (query.searchBy === "id" ? "=" : "L") : ">",
         gridParam: grid,
-        sortname: "cliente.razao",
+        ...ixcColumnOrder(
+          query,
+          { name: "cliente.razao", active: "cliente.ativo", city: "cidade.nome", phone: "cliente.telefone_celular" },
+          "cliente.razao",
+          "asc"
+        ),
         rp: query.limit,
       },
       query.page
@@ -287,8 +293,19 @@ export class SupportService {
         qtype: "movimento_produtos.id_contrato",
         query: String(contractId),
         oper: "=",
-        sortname: "movimento_produtos.id",
-        sortorder: "desc",
+        ...ixcColumnOrder(
+          query,
+          {
+            description: "movimento_produtos.descricao",
+            status: "movimento_produtos.status_comodato",
+            assetNumber: "movimento_produtos.patrimonio",
+            serial: "movimento_produtos.numero_serie",
+            date: "movimento_produtos.data",
+            loginId: "movimento_produtos.id_login",
+          },
+          "movimento_produtos.id",
+          "desc"
+        ),
         rp: query.limit,
       },
       query.page

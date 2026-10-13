@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "../components/SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { Users, ArrowUpRight, Headset, Search, RotateCcw } from "lucide-vue-next";
 
 import { computed, ref, watch } from "vue";
@@ -26,7 +28,13 @@ const searchPlaceholders: Record<string, string> = {
 };
 const searchPlaceholder = computed(() => searchPlaceholders[searchBy.value] ?? "Digite sua busca");
 const applied = ref({ status: status.value, searchBy: searchBy.value, search: search.value });
-const params = computed(() => new URLSearchParams({ ...applied.value, page: String(page.value), limit: String(limit.value) }));
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  if (page.value !== 1) page.value = 1;
+  else void reload();
+});
+const params = computed(
+  () => new URLSearchParams({ ...sortParams(), ...applied.value, page: String(page.value), limit: String(limit.value) })
+);
 const { data, loading, error, reload } = useLiveQuery((signal) => supportApi.customers(params.value, signal));
 watch([page, limit], reload);
 watch(
@@ -115,10 +123,12 @@ function clear() {
           <table class="compact-table min-w-[720px]">
             <thead>
               <tr>
-                <th scope="col" class="!pl-4">Cliente / ID</th>
-                <th scope="col">Cadastro</th>
-                <th scope="col">Localidade</th>
-                <th scope="col">Contato</th>
+                <SortableHeader class="!pl-4" column="name" :sort="tableSort" label="Cliente / ID" @change="setTableSort"
+                  >Cliente / ID</SortableHeader
+                >
+                <SortableHeader column="active" :sort="tableSort" label="Cadastro" @change="setTableSort">Cadastro</SortableHeader>
+                <SortableHeader column="city" :sort="tableSort" label="Localidade" @change="setTableSort">Localidade</SortableHeader>
+                <SortableHeader column="phone" :sort="tableSort" label="Contato" @change="setTableSort">Contato</SortableHeader>
                 <th scope="col" class="w-12 !pr-4"><span class="sr-only">Ações do cliente</span></th>
               </tr>
             </thead>

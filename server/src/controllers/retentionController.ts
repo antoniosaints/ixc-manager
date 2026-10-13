@@ -1,3 +1,4 @@
+import { columnSortFields } from "../utils/columnSort.js";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import { db } from "../repositories/database.js";
@@ -9,6 +10,7 @@ import { createCustomerRiskPdf } from "../services/retention/CustomerRiskPdf.js"
 
 const auth = new AuthService();
 const listQuery = z.object({
+  ...columnSortFields,
   snapshotId: z.string().uuid().optional(),
   riskLevel: z.enum(["LOW", "ATTENTION", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
   city: z.string().min(1).optional(),

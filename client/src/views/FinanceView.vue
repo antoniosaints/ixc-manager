@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "../components/SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { computed, reactive, ref, nextTick, watch } from "vue";
 import {
   Banknote,
@@ -172,9 +174,23 @@ const accountRows = computed(() =>
 );
 const rows = computed(() => (tab.value !== "series" ? accountRows.value : (data.value?.series ?? [])));
 const totalPages = computed(() => Math.max(1, Math.ceil(rows.value.length / tableLimit.value)));
-const pageAccounts = computed(() => accountRows.value.slice((tablePage.value - 1) * tableLimit.value, tablePage.value * tableLimit.value));
+const { tableSort, setTableSort, sortedRows } = useTableSort(() => {
+  tablePage.value = 1;
+});
+watch(tab, () => {
+  tableSort.value = null;
+});
+const pageAccounts = computed(() =>
+  sortedRows(accountRows.value, (row, column) => row[column as keyof typeof row]).slice(
+    (tablePage.value - 1) * tableLimit.value,
+    tablePage.value * tableLimit.value
+  )
+);
 const pageSeries = computed(() =>
-  (data.value?.series ?? []).slice((tablePage.value - 1) * tableLimit.value, tablePage.value * tableLimit.value)
+  sortedRows(data.value?.series, (row, column) => row[column as keyof typeof row]).slice(
+    (tablePage.value - 1) * tableLimit.value,
+    tablePage.value * tableLimit.value
+  )
 );
 function apply() {
   validation.value = "";
@@ -592,18 +608,41 @@ function preset(kind: string) {
           <table class="compact-table min-w-[700px]">
             <thead>
               <tr v-if="tab !== 'series'">
-                <th scope="col" class="!pl-4">Conta contábil</th>
-                <th scope="col">Tipo</th>
-                <th scope="col" class="text-right">Débitos</th>
-                <th scope="col" class="text-right">Créditos</th>
-                <th scope="col" class="text-right">{{ tab === "ledger" ? "Variação (crédito − débito)" : "Valor líquido" }}</th>
-                <th scope="col" class="!pr-4 text-right">Lançamentos</th>
+                <SortableHeader class="!pl-4" column="name" :sort="tableSort" label="Conta contábil" @change="setTableSort"
+                  >Conta contábil</SortableHeader
+                >
+                <SortableHeader column="type" :sort="tableSort" label="Tipo" @change="setTableSort">Tipo</SortableHeader>
+                <SortableHeader class="text-right" column="debit" :sort="tableSort" label="Débitos" @change="setTableSort"
+                  >Débitos</SortableHeader
+                >
+                <SortableHeader class="text-right" column="credit" :sort="tableSort" label="Créditos" @change="setTableSort"
+                  >Créditos</SortableHeader
+                >
+                <SortableHeader
+                  class="text-right"
+                  column="value"
+                  :sort="tableSort"
+                  :label="tab === 'ledger' ? 'Variação (crédito − débito)' : 'Valor líquido'"
+                  @change="setTableSort"
+                  >{{ tab === "ledger" ? "Variação (crédito − débito)" : "Valor líquido" }}</SortableHeader
+                >
+                <SortableHeader class="!pr-4 text-right" column="records" :sort="tableSort" label="Lançamentos" @change="setTableSort"
+                  >Lançamentos</SortableHeader
+                >
               </tr>
               <tr v-else>
-                <th scope="col" class="!pl-4">Período</th>
-                <th scope="col" class="text-right">Receitas</th>
-                <th scope="col" class="text-right">Despesas</th>
-                <th scope="col" class="!pr-4 text-right">Resultado</th>
+                <SortableHeader class="!pl-4" column="date" :sort="tableSort" label="Período" @change="setTableSort"
+                  >Período</SortableHeader
+                >
+                <SortableHeader class="text-right" column="revenue" :sort="tableSort" label="Receitas" @change="setTableSort"
+                  >Receitas</SortableHeader
+                >
+                <SortableHeader class="text-right" column="expense" :sort="tableSort" label="Despesas" @change="setTableSort"
+                  >Despesas</SortableHeader
+                >
+                <SortableHeader class="!pr-4 text-right" column="result" :sort="tableSort" label="Resultado" @change="setTableSort"
+                  >Resultado</SortableHeader
+                >
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">

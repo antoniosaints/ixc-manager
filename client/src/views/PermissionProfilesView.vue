@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import SortableHeader from "../components/SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
+const { tableSort, setTableSort, sortedRows } = useTableSort();
 import { toast } from "../notifications/toast";
 import { ShieldCheck, Plus, Save, X, RotateCcw } from "lucide-vue-next";
 
@@ -50,6 +53,10 @@ function preset(key: string) {
   if (!id.value && !form.name && preset) Object.assign(form, { name: preset.name, description: preset.description });
 }
 onMounted(load);
+function sortValue(profile: AccessProfile, column: string) {
+  const values = { name: profile.name, permissions: profile.permissions.length, usersCount: profile.usersCount };
+  return values[column as keyof typeof values];
+}
 </script>
 <template>
   <section class="panel overflow-hidden">
@@ -69,14 +76,14 @@ onMounted(load);
       <table class="compact-table min-w-[500px]">
         <thead>
           <tr>
-            <th>Perfil</th>
-            <th>Permissões</th>
-            <th>Usuários</th>
+            <SortableHeader column="name" :sort="tableSort" label="Perfil" @change="setTableSort">Perfil</SortableHeader>
+            <SortableHeader column="permissions" :sort="tableSort" label="Permissões" @change="setTableSort">Permissões</SortableHeader>
+            <SortableHeader column="usersCount" :sort="tableSort" label="Usuários" @change="setTableSort">Usuários</SortableHeader>
             <th><span class="sr-only">Editar perfil</span></th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
-          <tr v-for="profile in access.profiles" :key="profile.id">
+          <tr v-for="profile in sortedRows(access.profiles, (profile, column) => sortValue(profile, column))" :key="profile.id">
             <td>
               <strong>{{ profile.name }}</strong>
               <p class="compact-secondary">{{ profile.description }}</p>

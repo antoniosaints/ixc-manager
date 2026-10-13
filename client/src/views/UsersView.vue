@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import SortableHeader from "../components/SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
+const { tableSort, setTableSort, sortedRows } = useTableSort();
 import { toast } from "../notifications/toast";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { Pencil, Plus, ShieldCheck, Users, X } from "lucide-vue-next";
@@ -162,6 +165,10 @@ function roleLabel(role: UserRole) {
 }
 
 onMounted(loadUsers);
+function sortValue(user: AuthUser, column: string) {
+  const values = { name: user.name, email: user.email, profile: user.profileName || roleLabel(user.role), active: user.active };
+  return values[column as keyof typeof values];
+}
 </script>
 
 <template>
@@ -198,15 +205,23 @@ onMounted(loadUsers);
         <table class="w-full min-w-[760px] text-left">
           <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
-              <th class="px-5 py-3 font-semibold">Usuário</th>
-              <th class="px-5 py-3 font-semibold">E-mail</th>
-              <th class="px-5 py-3 font-semibold">Perfil</th>
-              <th class="px-5 py-3 font-semibold">Status</th>
+              <SortableHeader class="px-5 py-3 font-semibold" column="name" :sort="tableSort" label="Usuário" @change="setTableSort"
+                >Usuário</SortableHeader
+              >
+              <SortableHeader class="px-5 py-3 font-semibold" column="email" :sort="tableSort" label="E-mail" @change="setTableSort"
+                >E-mail</SortableHeader
+              >
+              <SortableHeader class="px-5 py-3 font-semibold" column="profile" :sort="tableSort" label="Perfil" @change="setTableSort"
+                >Perfil</SortableHeader
+              >
+              <SortableHeader class="px-5 py-3 font-semibold" column="active" :sort="tableSort" label="Status" @change="setTableSort"
+                >Status</SortableHeader
+              >
               <th class="px-5 py-3 text-right font-semibold">Ações</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 text-sm text-slate-700">
-            <tr v-for="user in users" :key="user.id" class="hover:bg-slate-50/70">
+            <tr v-for="user in sortedRows(users, (user, column) => sortValue(user, column))" :key="user.id" class="hover:bg-slate-50/70">
               <td class="px-5 py-2 font-semibold text-slate-800">{{ user.name }}</td>
               <td class="px-5 py-2">{{ user.email }}</td>
               <td class="px-5 py-2">

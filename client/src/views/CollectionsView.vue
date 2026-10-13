@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "../components/SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { computed, reactive, ref, watch } from "vue";
 import { Banknote, Users, Clock3, CalendarClock, Search, SlidersHorizontal, Download, ArrowUpRight, RotateCcw } from "lucide-vue-next";
 import {
@@ -39,7 +41,13 @@ const form = reactive(defaults()),
   exportOpen = ref(false),
   validation = ref("");
 const filters = computed(() => Object.fromEntries(Object.entries(applied.value).filter(([, v]) => v !== "")));
-const params = computed(() => new URLSearchParams({ ...filters.value, page: String(page.value), limit: String(limit.value) }));
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  if (page.value !== 1) page.value = 1;
+  else void reload();
+});
+const params = computed(
+  () => new URLSearchParams({ ...sortParams(), ...filters.value, page: String(page.value), limit: String(limit.value) })
+);
 const availableBuckets = computed(() =>
   Object.fromEntries(Object.entries(bucketLabels).filter(([key]) => key !== "upcoming" || form.scope === "open"))
 );
@@ -72,6 +80,7 @@ function togglePage() {
   }
 }
 function apply() {
+  if (form.sort !== applied.value.sort) tableSort.value = null;
   validation.value = "";
   if (form.scope === "overdue" && form.bucket === "upcoming") form.bucket = "all";
   if ((form.from && !form.to) || (form.to && !form.from) || (form.from && form.to && form.from > form.to)) {
@@ -238,13 +247,23 @@ function reset() {
                 <th v-if="auth.can('collections.export')" scope="col" class="!w-8">
                   <input type="checkbox" :checked="allSelected" aria-label="Selecionar clientes desta página" @change="togglePage" />
                 </th>
-                <th scope="col">Cliente / cadastro</th>
+                <SortableHeader column="name" :sort="tableSort" label="Cliente / cadastro" @change="setTableSort"
+                  >Cliente / cadastro</SortableHeader
+                >
                 <th scope="col">Contato</th>
-                <th scope="col">Localidade</th>
-                <th scope="col">Mais antigo / atraso</th>
-                <th scope="col" class="text-right">Títulos</th>
-                <th scope="col" class="text-right">Saldo aberto</th>
-                <th scope="col" class="text-right">Saldo vencido</th>
+                <SortableHeader column="city" :sort="tableSort" label="Localidade" @change="setTableSort">Localidade</SortableHeader>
+                <SortableHeader column="oldestDue" :sort="tableSort" label="Mais antigo / atraso" @change="setTableSort"
+                  >Mais antigo / atraso</SortableHeader
+                >
+                <SortableHeader class="text-right" column="titles" :sort="tableSort" label="Títulos" @change="setTableSort"
+                  >Títulos</SortableHeader
+                >
+                <SortableHeader class="text-right" column="balance" :sort="tableSort" label="Saldo aberto" @change="setTableSort"
+                  >Saldo aberto</SortableHeader
+                >
+                <SortableHeader class="text-right" column="overdueBalance" :sort="tableSort" label="Saldo vencido" @change="setTableSort"
+                  >Saldo vencido</SortableHeader
+                >
                 <th v-if="auth.can('collections.customer.view')" scope="col"><span class="sr-only">Detalhes</span></th>
               </tr>
             </thead>

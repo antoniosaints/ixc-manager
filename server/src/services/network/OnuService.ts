@@ -1,3 +1,5 @@
+import { columnSortFields, columnOrder, requestedSort } from "../../utils/columnSort.js";
+import { sortTableRows } from "../../utils/tableSort.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { IxcReadDatabase, type IxcReadSession } from "../../integrations/ixc/database/IxcReadDatabase.js";
@@ -5,6 +7,7 @@ import { IxcOnuApi, OnuCommandError, pendingOnuDto, type OnuRow } from "../../in
 import { OnuOperationStore, type OperationStore, type OnuOperation } from "./OnuOperationStore.js";
 const id = z.coerce.number().int().positive().safe();
 export const onuListQuery = z.object({
+  ...columnSortFields,
   oltId: id.optional(),
   page: id.max(100000).default(1),
   limit: z.coerce
@@ -222,9 +225,11 @@ export class OnuService {
     const options = await this.options();
     const names = new Map(options.olts.map((r) => [Number(r.id), text(r.name)]));
     return {
-      items: filtered
-        .slice((q.page - 1) * q.limit, q.page * q.limit)
-        .map((r) => ({ ...r, oltName: names.get(r.oltId) ?? `OLT #${r.oltId}`, canAuthorize: names.has(r.oltId) })),
+      items: sortTableRows(
+        filtered.map((r) => ({ ...r, oltName: names.get(r.oltId) ?? `OLT #${r.oltId}`, canAuthorize: names.has(r.oltId) })),
+        requestedSort(q, { serial: true, oltName: true, pon: true, identity: true }),
+        (row, column) => (column === "identity" ? row.model : row[column as "serial" | "oltName" | "pon"])
+      ).slice((q.page - 1) * q.limit, q.page * q.limit),
       total: filtered.length,
       page: q.page,
       limit: q.limit,
@@ -245,7 +250,7 @@ export class OnuService {
       const rows = await this.select(
         s,
         "onu-list",
-        `SELECT f.id,f.id_transmissor,f.nome,f.mac,f.ponid,f.onu_tipo,f.status_autorizado,f.id_login,f.id_contrato,f.id_perfil,f.id_hardware,f.id_projeto,f.id_caixa_ftth,f.porta_ftth,f.vlan,o.descricao oltName,r.login login ${base} ${where} ORDER BY f.id DESC LIMIT ? OFFSET ?`,
+        `SELECT f.id,f.id_transmissor,f.nome,f.mac,f.ponid,f.onu_tipo,f.status_autorizado,f.id_login,f.id_contrato,f.id_perfil,f.id_hardware,f.id_projeto,f.id_caixa_ftth,f.porta_ftth,f.vlan,o.descricao oltName,r.login login ${base} ${where} ORDER BY ${columnOrder(q, { serial: "f.mac", oltName: "o.descricao", pon: "f.ponid", identity: "r.login" }, "f.id DESC", "f.id")} LIMIT ? OFFSET ?`,
         [...params, q.limit, (q.page - 1) * q.limit]
       );
       return {

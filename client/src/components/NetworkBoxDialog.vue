@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "./SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { computed, reactive, ref, watch, onBeforeUnmount } from "vue";
 import { Cable, MapPin, Network, Search, RefreshCw, ArrowUpRight, Info, Copy, ArrowLeftRight } from "lucide-vue-next";
 import RecordQuickLink from "./RecordQuickLink.vue";
@@ -38,7 +40,13 @@ const applied = ref({ ...form }),
   page = ref(1),
   limit = ref(10),
   selectedLogin = ref<NetworkLogin | null>(null);
-const params = computed(() => new URLSearchParams({ ...applied.value, page: String(page.value), limit: String(limit.value) }));
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  if (page.value !== 1) page.value = 1;
+  else void reload();
+});
+const params = computed(
+  () => new URLSearchParams({ ...sortParams(), ...applied.value, page: String(page.value), limit: String(limit.value) })
+);
 const { data, loading, error, reload, refreshInBackground } = useLiveQuery<NetworkLogins>(async (signal) => {
   if (auth.can("network.logins.view")) return networkApi.logins(props.boxId, params.value, signal);
   const result = await networkApi.box(props.boxId, signal);
@@ -307,12 +315,14 @@ const statusLabel = (status: string) => (status === "online" ? "Online" : status
           <table class="compact-table min-w-[820px]">
             <thead>
               <tr>
-                <th scope="col">Porta</th>
-                <th scope="col">Login / cliente</th>
-                <th scope="col">Cadastro</th>
-                <th scope="col">Conexão</th>
-                <th scope="col">IP / MAC</th>
-                <th scope="col">Contrato</th>
+                <SortableHeader column="port" :sort="tableSort" label="Porta" @change="setTableSort">Porta</SortableHeader>
+                <SortableHeader column="login" :sort="tableSort" label="Login / cliente" @change="setTableSort"
+                  >Login / cliente</SortableHeader
+                >
+                <SortableHeader column="active" :sort="tableSort" label="Cadastro" @change="setTableSort">Cadastro</SortableHeader>
+                <SortableHeader column="status" :sort="tableSort" label="Conexão" @change="setTableSort">Conexão</SortableHeader>
+                <SortableHeader column="ip" :sort="tableSort" label="IP / MAC" @change="setTableSort">IP / MAC</SortableHeader>
+                <SortableHeader column="contractId" :sort="tableSort" label="Contrato" @change="setTableSort">Contrato</SortableHeader>
                 <th scope="col"><span class="sr-only">Detalhes do login</span></th>
               </tr>
             </thead>

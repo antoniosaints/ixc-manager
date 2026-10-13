@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import SortableHeader from "./SortableHeader.vue";
+import type { TableSort } from "../utils/tableSort";
 import { ArrowUpRight } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 import type { Customer } from "../api";
 import RiskBadge from "./RiskBadge.vue";
 
-defineProps<{ customers: Customer[]; canViewDetails: boolean; emptyMessage: string }>();
+defineProps<{ customers: Customer[]; canViewDetails: boolean; emptyMessage: string; tableSort: TableSort | null }>();
+const emit = defineEmits<{ sortChange: [value: TableSort | null] }>();
 const router = useRouter();
 const target = (customer: Customer) => ({
   path: `/customers/${customer.customer_id}`,
@@ -23,14 +26,28 @@ const scoreColor = (value: number, max: number) => {
     <table class="compact-table min-w-[1040px]">
       <thead>
         <tr>
-          <th class="!pl-4">Cliente / contrato</th>
-          <th>Score / nível</th>
-          <th>Localidade</th>
-          <th>Plano</th>
-          <th>Financeiro</th>
-          <th>Suporte</th>
-          <th>Conexão</th>
-          <th>Atualizado</th>
+          <SortableHeader class="!pl-4" column="name" :sort="tableSort" label="Cliente / contrato" @change="emit('sortChange', $event)"
+            >Cliente / contrato</SortableHeader
+          >
+          <SortableHeader column="score" :sort="tableSort" label="Score / nível" @change="emit('sortChange', $event)"
+            >Score / nível</SortableHeader
+          >
+          <SortableHeader column="city" :sort="tableSort" label="Localidade" @change="emit('sortChange', $event)"
+            >Localidade</SortableHeader
+          >
+          <SortableHeader column="plan_name" :sort="tableSort" label="Plano" @change="emit('sortChange', $event)">Plano</SortableHeader>
+          <SortableHeader column="financial_score" :sort="tableSort" label="Financeiro" @change="emit('sortChange', $event)"
+            >Financeiro</SortableHeader
+          >
+          <SortableHeader column="support_score" :sort="tableSort" label="Suporte" @change="emit('sortChange', $event)"
+            >Suporte</SortableHeader
+          >
+          <SortableHeader column="network_score" :sort="tableSort" label="Conexão" @change="emit('sortChange', $event)"
+            >Conexão</SortableHeader
+          >
+          <SortableHeader column="calculated_at" :sort="tableSort" label="Atualizado" @change="emit('sortChange', $event)"
+            >Atualizado</SortableHeader
+          >
           <th class="!pr-4"><span class="sr-only">Ações do cliente</span></th>
         </tr>
       </thead>

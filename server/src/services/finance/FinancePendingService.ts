@@ -1,3 +1,4 @@
+import { columnSortFields, columnOrder } from "../../utils/columnSort.js";
 import { z } from "zod";
 import { financeQuery } from "./FinanceService.js";
 import { IxcReadDatabase, type IxcReadSession, type IxcReadQuery } from "../../integrations/ixc/database/IxcReadDatabase.js";
@@ -8,6 +9,7 @@ import { receivableEligibility } from "../../integrations/ixc/database/receivabl
 
 export const pendingQuery = z
   .object({
+    ...columnSortFields,
     from: z.string(),
     to: z.string(),
     branchId: z.coerce.number().int().positive().optional(),
@@ -128,7 +130,7 @@ export function pendingSql(input: PendingQuery, today: string) {
  FROM ${table} t LEFT JOIN ${party} c ON c.id=t.${partyField}
  LEFT JOIN planejamento_analitico a ON a.id=t.id_conta
  ${receiving ? "LEFT JOIN cliente_contrato cc ON cc.id=t.id_contrato AND cc.id_cliente=t.id_cliente" : ""}
- WHERE ${where} ORDER BY ${order} LIMIT ? OFFSET ?`,
+ WHERE ${where} ORDER BY ${columnOrder(query, { partyName: "c.razao", id: "t.id", accountName: "a.planejamento_analitico", dueDate: "t.data_vencimento", amount: "t.valor", paid: receiving ? "t.valor_recebido" : "t.valor_pago", balance: "t.valor_aberto" }, order, "t.id")} LIMIT ? OFFSET ?`,
     params: [today, ...params, query.limit, (query.page - 1) * query.limit],
   };
   return { query, summary, details };

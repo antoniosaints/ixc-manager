@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "../components/SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { useAuthStore } from "../stores/auth";
 const auth = useAuthStore();
 import { computed, ref } from "vue";
@@ -10,8 +12,15 @@ const search = ref("");
 const appliedSearch = ref("");
 const page = ref(1);
 const limit = ref("10");
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  page.value = 1;
+  void reload();
+});
 const { data, loading, error, reload } = useLiveQuery((signal) =>
-  upgradesApi.plans(new URLSearchParams({ search: appliedSearch.value, page: String(page.value), limit: limit.value }), signal)
+  upgradesApi.plans(
+    new URLSearchParams({ ...sortParams(), search: appliedSearch.value, page: String(page.value), limit: limit.value }),
+    signal
+  )
 );
 const totalPages = computed(() => Math.max(1, Math.ceil((data.value?.total ?? 0) / Number(limit.value))));
 const apply = () => {
@@ -63,10 +72,14 @@ const money = (value: number | null) =>
         <table class="compact-table min-w-[620px]">
           <thead class="bg-slate-50">
             <tr>
-              <th class="!pl-4">Plano</th>
-              <th>Valor cadastrado</th>
-              <th>Fidelidade</th>
-              <th>Filial</th>
+              <SortableHeader class="!pl-4" column="name" :sort="tableSort" label="Plano" @change="setTableSort">Plano</SortableHeader>
+              <SortableHeader column="value" :sort="tableSort" label="Valor cadastrado" @change="setTableSort"
+                >Valor cadastrado</SortableHeader
+              >
+              <SortableHeader column="fidelityMonths" :sort="tableSort" label="Fidelidade" @change="setTableSort"
+                >Fidelidade</SortableHeader
+              >
+              <SortableHeader column="branchId" :sort="tableSort" label="Filial" @change="setTableSort">Filial</SortableHeader>
               <th v-if="auth.can('upgrades.opportunities.view')" class="!pr-4"><span class="sr-only">Oportunidades</span></th>
             </tr>
           </thead>

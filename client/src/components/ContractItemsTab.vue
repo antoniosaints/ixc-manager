@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "./SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { computed, ref, watch } from "vue";
 import { Package, ListPlus, RefreshCw } from "lucide-vue-next";
 import { upgradesApi, formatDate, type ContractProduct, type ContractAdditionalService, type LivePage } from "../upgradesApi";
@@ -11,7 +13,11 @@ const props = defineProps<{ contractId: string; module: "support" | "upgrades"; 
 const page = ref(1),
   limit = ref(10);
 const api = computed(() => (props.module === "support" ? supportApi : upgradesApi));
-const params = computed(() => new URLSearchParams({ page: String(page.value), limit: String(limit.value) }));
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  if (page.value !== 1) page.value = 1;
+  else void reload();
+});
+const params = computed(() => new URLSearchParams({ ...sortParams(), page: String(page.value), limit: String(limit.value) }));
 const { data, loading, error, reload } = useLiveQuery<LivePage<ContractProduct | ContractAdditionalService>>((signal) =>
   props.kind === "products"
     ? api.value.contractProducts(props.contractId, params.value, signal)
@@ -59,15 +65,19 @@ const types: Record<string, string> = {
         <table v-if="kind === 'products'" class="compact-table min-w-[1050px]">
           <thead>
             <tr>
-              <th scope="col" class="!pl-4">Produto / tipo</th>
+              <SortableHeader class="!pl-4" column="description" :sort="tableSort" label="Produto / tipo" @change="setTableSort"
+                >Produto / tipo</SortableHeader
+              >
               <th scope="col">Vínculo</th>
-              <th scope="col">Quantidade</th>
-              <th scope="col">Unitário</th>
-              <th scope="col">Bruto</th>
-              <th scope="col">Desconto</th>
-              <th scope="col">Acréscimo</th>
-              <th scope="col">Até vencimento</th>
-              <th scope="col" class="!pr-4">Líquido</th>
+              <SortableHeader column="quantity" :sort="tableSort" label="Quantidade" @change="setTableSort">Quantidade</SortableHeader>
+              <SortableHeader column="unitPrice" :sort="tableSort" label="Unitário" @change="setTableSort">Unitário</SortableHeader>
+              <SortableHeader column="gross" :sort="tableSort" label="Bruto" @change="setTableSort">Bruto</SortableHeader>
+              <SortableHeader column="discount" :sort="tableSort" label="Desconto" @change="setTableSort">Desconto</SortableHeader>
+              <SortableHeader column="surcharge" :sort="tableSort" label="Acréscimo" @change="setTableSort">Acréscimo</SortableHeader>
+              <SortableHeader column="untilDue" :sort="tableSort" label="Até vencimento" @change="setTableSort"
+                >Até vencimento</SortableHeader
+              >
+              <SortableHeader class="!pr-4" column="net" :sort="tableSort" label="Líquido" @change="setTableSort">Líquido</SortableHeader>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
@@ -96,13 +106,19 @@ const types: Record<string, string> = {
         <table v-else class="compact-table min-w-[950px]">
           <thead>
             <tr>
-              <th scope="col" class="!pl-4">Serviço / tipo</th>
-              <th scope="col">Status</th>
-              <th scope="col">Quantidade</th>
-              <th scope="col">Unitário</th>
-              <th scope="col">Total cadastrado</th>
-              <th scope="col">Repetição</th>
-              <th scope="col" class="!pr-4">Datas / execuções</th>
+              <SortableHeader class="!pl-4" column="description" :sort="tableSort" label="Serviço / tipo" @change="setTableSort"
+                >Serviço / tipo</SortableHeader
+              >
+              <SortableHeader column="status" :sort="tableSort" label="Status" @change="setTableSort">Status</SortableHeader>
+              <SortableHeader column="quantity" :sort="tableSort" label="Quantidade" @change="setTableSort">Quantidade</SortableHeader>
+              <SortableHeader column="unitPrice" :sort="tableSort" label="Unitário" @change="setTableSort">Unitário</SortableHeader>
+              <SortableHeader column="total" :sort="tableSort" label="Total cadastrado" @change="setTableSort"
+                >Total cadastrado</SortableHeader
+              >
+              <SortableHeader column="recurring" :sort="tableSort" label="Repetição" @change="setTableSort">Repetição</SortableHeader>
+              <SortableHeader class="!pr-4" column="date" :sort="tableSort" label="Datas / execuções" @change="setTableSort"
+                >Datas / execuções</SortableHeader
+              >
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">

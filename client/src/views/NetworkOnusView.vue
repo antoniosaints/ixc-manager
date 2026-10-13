@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SortableHeader from "../components/SortableHeader.vue";
+import { useTableSort } from "../composables/useTableSort";
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Cable, Search, RefreshCw, ShieldCheck, List } from "lucide-vue-next";
@@ -23,9 +25,17 @@ const applied = ref({ olt: olt.value, search: search.value, status: status.value
   selectedPending = ref<PendingOnu | null>(null),
   selectedId = ref<number | null>(null);
 const options = useLiveQuery((signal) => onuApi.options(undefined, signal));
+const { tableSort, setTableSort, sortParams } = useTableSort(() => {
+  if (page.value !== 1) page.value = 1;
+  else {
+    void pending.reload();
+    void registered.reload();
+  }
+});
 const params = computed(
   () =>
     new URLSearchParams({
+      ...sortParams(),
       page: String(page.value),
       limit: String(limit.value),
       search: applied.value.search,
@@ -190,10 +200,18 @@ function changed() {
             <table class="compact-table min-w-[800px]">
               <thead>
                 <tr>
-                  <th scope="col">MAC / serial</th>
-                  <th scope="col">OLT</th>
-                  <th scope="col">PON</th>
-                  <th scope="col">{{ tab === "pending" ? "Modelo" : "Login / cadastro" }}</th>
+                  <SortableHeader column="serial" :sort="tableSort" label="MAC / serial" @change="setTableSort"
+                    >MAC / serial</SortableHeader
+                  >
+                  <SortableHeader column="oltName" :sort="tableSort" label="OLT" @change="setTableSort">OLT</SortableHeader>
+                  <SortableHeader column="pon" :sort="tableSort" label="PON" @change="setTableSort">PON</SortableHeader>
+                  <SortableHeader
+                    column="identity"
+                    :sort="tableSort"
+                    :label="tab === 'pending' ? 'Modelo' : 'Login / cadastro'"
+                    @change="setTableSort"
+                    >{{ tab === "pending" ? "Modelo" : "Login / cadastro" }}</SortableHeader
+                  >
                   <th scope="col"><span class="sr-only">Ações da ONU</span></th>
                 </tr>
               </thead>
