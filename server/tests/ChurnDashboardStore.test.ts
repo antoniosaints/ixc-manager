@@ -30,6 +30,24 @@ it("a falha nos indicadores não impede o carregamento da lista", async () => {
   expect(store.summaryError).toBe("Indicadores indisponíveis");
   expect(store.loading).toBe(false);
 });
+it("altera atenção somente no contrato selecionado sem carregar novamente toda a lista", async () => {
+  vi.mocked(api.customers).mockResolvedValue({
+    items: [
+      { customer_id: 1, contract_id: 101, attention_critical: false },
+      { customer_id: 1, contract_id: 102, attention_critical: true },
+      { customer_id: 2, contract_id: 201, attention_critical: false },
+    ],
+    total: 3,
+  } as any);
+  const store = useRetentionStore();
+  await store.loadDashboard();
+  store.updateAttention(1, 101, true);
+  expect(store.customers.map((item) => item.attention_critical)).toEqual([true, true, false]);
+  store.updateAttention(1, 101, false);
+  await store.loadSummary();
+  expect(store.customers.map((item) => item.attention_critical)).toEqual([false, true, false]);
+  expect(api.customers).toHaveBeenCalledOnce();
+});
 it("a falha na lista não impede mostrar os indicadores", async () => {
   vi.mocked(api.customers).mockRejectedValue(new Error("Lista indisponível"));
   const store = useRetentionStore();

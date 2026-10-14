@@ -9,13 +9,22 @@ import { dateOnly } from "../upgrades/UpgradeService.js";
 import { churnSettings } from "../settings/ChurnSettingsService.js";
 import type { RiskThresholds } from "../../config/risk.js";
 import { randomUUID } from "node:crypto";
+import { RedisRetentionSnapshotCache, type RetentionSnapshotCache } from "./RetentionSnapshotCache.js";
 
 type Row = Record<string, any>;
 type Filters = Parameters<import("../../repositories/RetentionRepository.js").RetentionRepository["listCustomers"]>[0] & {
   snapshotId?: string;
 };
-type Scored = { row: Row; context: RiskContext; risk: RiskResult; concentrators: string[] };
-type Snapshot = { id: string; items: Scored[]; queriedAt: string; sources: { key: string; label: string; status: "ok"; count: number }[] };
+type Scored = { row: Row; context: RiskContext; risk: RiskResult; concentrators: string[]; calculatedAt?: string };
+export type RetentionSnapshot = {
+  id: string;
+  items: Scored[];
+  queriedAt: string;
+  expiresAt?: string;
+  cacheRevision?: number;
+  sources: { key: string; label: string; status: "ok"; count: number }[];
+};
+type Snapshot = RetentionSnapshot;
 export const churnNavigationLifetimeMs = 30_000;
 const number = (value: unknown) => Number(value ?? 0);
 const text = (value: unknown) => String(value ?? "").trim();
@@ -35,29 +44,38 @@ const labels: Record<string, string> = {
   usage: "Consumo · mês atual e 3 anteriores",
 };
 
-/** Fresh reads by default; explicit list navigation can reuse one bounded in-memory snapshot. */
+/** Shared portfolio cache in production; individual reads refresh only that customer's scores. */
 export class DirectRetentionService {
   private pending = new Map<string, { promise: Promise<Snapshot>; controller: AbortController; subscribers: number }>();
   private navigationSnapshot?: { key: string; snapshot: Snapshot };
   constructor(
     private readonly reader: Pick<IxcReadDatabase, "withSnapshot" | "close"> = new IxcReadDatabase(),
     private readonly now = () => new Date(),
-    private readonly engine = new RetentionRiskEngine()
+    private readonly engine = new RetentionRiskEngine(),
+    private readonly cache?: RetentionSnapshotCache
   ) {}
   async close() {
     this.navigationSnapshot = undefined;
     for (const entry of this.pending.values()) entry.controller.abort();
     await this.reader.close();
+    await this.cache?.close();
   }
-  private async snapshot(customerId?: number, signal?: AbortSignal, reuseId?: string): Promise<Snapshot> {
+  private async snapshot(customerId?: number, signal?: AbortSignal, reuseId?: string, force = false): Promise<Snapshot> {
     if (signal?.aborted) throw fail("Consulta interrompida.", 499);
     const thresholds = await churnSettings.read();
     if (signal?.aborted) throw fail("Consulta interrompida.", 499);
-    const key = `${customerId ?? "all"}:${JSON.stringify(thresholds)}`;
+    const key = `${customerId ?? "all"}:${JSON.stringify(thresholds)}:${force}`;
     const navigation = this.navigationSnapshot;
     const age = navigation ? this.now().getTime() - Date.parse(navigation.snapshot.queriedAt) : 0;
     if (navigation && (age < 0 || age >= churnNavigationLifetimeMs)) this.navigationSnapshot = undefined;
-    if (customerId === undefined && reuseId && this.navigationSnapshot?.key === key && this.navigationSnapshot.snapshot.id === reuseId)
+    if (
+      !this.cache &&
+      !force &&
+      customerId === undefined &&
+      reuseId &&
+      this.navigationSnapshot?.key === key &&
+      this.navigationSnapshot.snapshot.id === reuseId
+    )
       return this.navigationSnapshot.snapshot;
     let entry = this.pending.get(key);
     if (!entry) {
@@ -65,8 +83,13 @@ export class DirectRetentionService {
       const deadline = setTimeout(() => controller.abort(), 45_000);
       deadline.unref();
       entry = {
-        promise: this.readSnapshot(thresholds, customerId, controller.signal).then((snapshot) => {
-          if (customerId === undefined && !controller.signal.aborted) this.navigationSnapshot = { key, snapshot };
+        promise: (customerId === undefined && this.cache
+          ? this.cache.load(thresholds, () => this.readSnapshot(thresholds, undefined, controller.signal), controller.signal, force)
+          : this.readSnapshot(thresholds, customerId, controller.signal)
+        ).then(async (snapshot) => {
+          if (customerId !== undefined && !controller.signal.aborted)
+            await this.cache?.updateCustomer(thresholds, customerId, snapshot, controller.signal);
+          if (!this.cache && customerId === undefined && !controller.signal.aborted) this.navigationSnapshot = { key, snapshot };
           return snapshot;
         }),
         controller,
@@ -242,7 +265,7 @@ export class DirectRetentionService {
     });
     const value = (item: Scored, column: string) => {
       if (column === "score") return item.risk.score;
-      if (column === "calculated_at") return snapshot.queriedAt;
+      if (column === "calculated_at") return item.calculatedAt ?? snapshot.queriedAt;
       if (column === "financial_score") return item.risk.factors.financial;
       if (column === "support_score") return item.risk.factors.support;
       if (column === "network_score") return item.risk.factors.network;
@@ -279,7 +302,8 @@ export class DirectRetentionService {
       source: "database",
       queriedAt: snapshot.queriedAt,
       snapshotId: snapshot.id,
-      reuseUntil: new Date(Date.parse(snapshot.queriedAt) + churnNavigationLifetimeMs).toISOString(),
+      reuseUntil: snapshot.expiresAt ?? new Date(Date.parse(snapshot.queriedAt) + churnNavigationLifetimeMs).toISOString(),
+      cache: snapshot.expiresAt ? "redis" : null,
     };
   }
   private listRow(item: Scored, queriedAt: string, state: Awaited<ReturnType<DirectRetentionService["localState"]>>) {
@@ -300,13 +324,13 @@ export class DirectRetentionService {
       contract_score: risk.factors.contract,
       satisfaction_score: risk.factors.satisfaction,
       satisfaction: row.satisfaction,
-      calculated_at: queriedAt,
+      calculated_at: item.calculatedAt ?? queriedAt,
       workflow_status: state.workflow.get(context.customerId)?.status ?? "OPEN",
       attention_critical: state.attention.has(context.contractId),
     };
   }
-  async getSummary(signal?: AbortSignal) {
-    const [snapshot, state] = await Promise.all([this.snapshot(undefined, signal), this.localState()]);
+  async getSummary(signal?: AbortSignal, force = false) {
+    const [snapshot, state] = await Promise.all([this.snapshot(undefined, signal, undefined, force), this.localState()]);
     const counts = { lowRisk: 0, attention: 0, medium: 0, highRisk: 0, critical: 0 };
     const keys = { LOW: "lowRisk", ATTENTION: "attention", MEDIUM: "medium", HIGH: "highRisk" } as const;
     const critical = new Set<number>(),
@@ -556,5 +580,4 @@ export class DirectRetentionService {
     };
   }
 }
-// One completed snapshot is retained only for explicit short-lived list navigation.
-export const directRetention = new DirectRetentionService();
+export const directRetention = new DirectRetentionService(undefined, undefined, undefined, new RedisRetentionSnapshotCache());

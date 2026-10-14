@@ -9,10 +9,12 @@ import { RetentionRiskEngine } from "../src/services/retention/RetentionRiskEngi
 import { retentionRoutes } from "../src/controllers/retentionController.js";
 import { AuthService } from "../src/services/AuthService.js";
 import fs from "node:fs";
+import { churnCacheLifetimeMs, type RetentionSnapshotCache } from "../src/services/retention/RetentionSnapshotCache.js";
+import type { RetentionSnapshot } from "../src/services/retention/DirectRetentionService.js";
 
 const now = () => new Date("2026-10-06T15:00:00Z");
 afterEach(() => vi.restoreAllMocks());
-function fixture(clock: () => Date = now) {
+function fixture(clock: () => Date = now, cache?: RetentionSnapshotCache) {
   const sql = new DatabaseSync(":memory:");
   sql.function("DATEDIFF", (a: any, b: any) =>
     Math.floor((Date.parse(String(a).slice(0, 10)) - Date.parse(String(b).slice(0, 10))) / 86400000)
@@ -70,9 +72,91 @@ function fixture(clock: () => Date = now) {
   });
   const reader = { withSnapshot: vi.fn(async (read: any) => read({ select })), close: vi.fn(async () => {}) };
   vi.spyOn(db, "query").mockImplementation(async (query: any, params: any = []) => [sql.prepare(query).all(...params), []] as any);
-  return { sql, select, reader, service: new DirectRetentionService(reader, clock) };
+  return { sql, select, reader, service: new DirectRetentionService(reader, clock, undefined, cache) };
+}
+function sharedCache(clock: () => Date): RetentionSnapshotCache {
+  const snapshots = new Map<string, RetentionSnapshot>();
+  return {
+    load: async (thresholds, read, _signal, force) => {
+      const key = JSON.stringify(thresholds),
+        current = snapshots.get(key);
+      if (!force && current?.expiresAt && Date.parse(current.expiresAt) > clock().getTime()) return structuredClone(current);
+      const snapshot = { ...(await read()), expiresAt: new Date(clock().getTime() + churnCacheLifetimeMs).toISOString() };
+      snapshots.set(key, structuredClone(snapshot));
+      return snapshot;
+    },
+    updateCustomer: async (thresholds, customerId, update) => {
+      const current = snapshots.get(JSON.stringify(thresholds));
+      if (current)
+        current.items = [
+          ...current.items.filter((item) => item.context.customerId !== customerId),
+          ...update.items.map((item) => ({ ...item, calculatedAt: update.queriedAt })),
+        ];
+    },
+    close: async () => {},
+  };
 }
 describe("Churn direto sem processamento em segundo plano", () => {
+  it("compartilha a carteira entre usuários e instâncias por 12 horas, sem recalcular ao filtrar, atualizar ou mudar atenção", async () => {
+    let time = now().getTime();
+    const clock = () => new Date(time),
+      cache = sharedCache(clock),
+      f = fixture(clock, cache);
+    const second = new DirectRetentionService(f.reader, clock, undefined, cache);
+    const filters = { workflowStatus: "ALL" as const, page: 1, limit: 10 };
+    try {
+      const first = await f.service.listCustomers(filters);
+      expect(first.cache).toBe("redis");
+      expect(Date.parse(first.reuseUntil) - time).toBe(churnCacheLifetimeMs);
+      await second.listCustomers({ ...filters, page: 2 });
+      await second.getSummary();
+      f.sql.exec("DELETE FROM retention_contract_attention");
+      expect((await second.listCustomers({ ...filters, attentionOnly: true })).total).toBe(0);
+      await f.service.listCustomers(filters);
+      expect(f.reader.withSnapshot).toHaveBeenCalledOnce();
+      time += churnCacheLifetimeMs;
+      await second.listCustomers(filters);
+      expect(f.reader.withSnapshot).toHaveBeenCalledTimes(2);
+    } finally {
+      await f.service.close();
+      await second.close();
+      f.sql.close();
+    }
+  });
+  it("substitui só os contratos do cliente recalculado, conserva a validade e remove somente clientes que deixam de ser elegíveis", async () => {
+    let time = now().getTime();
+    const clock = () => new Date(time),
+      cache = sharedCache(clock),
+      f = fixture(clock, cache);
+    const filters = { workflowStatus: "ALL" as const, page: 1, limit: 10 };
+    const calculate = vi.spyOn(RetentionRiskEngine.prototype, "calculate");
+    try {
+      const initial = await f.service.listCustomers(filters);
+      calculate.mockClear();
+      f.reader.withSnapshot.mockClear();
+      time += 60000;
+      f.sql.exec("UPDATE cliente SET grau_satisfacao='1' WHERE id=2");
+      await f.service.getSnapshot(2);
+      expect(calculate.mock.calls.map(([context]) => context.customerId)).toEqual([2]);
+      expect(f.reader.withSnapshot).toHaveBeenCalledOnce();
+      const updated = await f.service.listCustomers(filters);
+      expect(calculate).toHaveBeenCalledOnce();
+      expect(updated.items.find((item) => item.customer_id === 2)?.calculated_at).toBe(clock().toISOString());
+      expect(updated.items.filter((item) => item.customer_id !== 2)).toEqual(initial.items.filter((item) => item.customer_id !== 2));
+      expect(updated.reuseUntil).toBe(initial.reuseUntil);
+      expect(updated.items.find((item) => item.customer_id === 2)?.score).toBeGreaterThan(
+        initial.items.find((item) => item.customer_id === 2)!.score
+      );
+      f.sql.exec("UPDATE cliente SET ativo='N' WHERE id=2");
+      time += 1000;
+      expect(await f.service.getSnapshot(2)).toBeNull();
+      expect((await f.service.listCustomers(filters)).items.map((item) => item.customer_id)).not.toContain(2);
+      expect(f.reader.withSnapshot).toHaveBeenCalledTimes(2);
+    } finally {
+      await f.service.close();
+      f.sql.close();
+    }
+  });
   it("ordena a mesma análise antes de paginar e volta à prioridade padrão ao limpar", async () => {
     const { sql, service } = fixture();
     const filters = { workflowStatus: "ALL" as const, page: 1, limit: 10 };

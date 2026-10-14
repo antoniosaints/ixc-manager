@@ -162,7 +162,7 @@ export async function retentionRoutes(app: FastifyInstance) {
   // Compatibility endpoints complete within the request; they never enqueue a job.
   app.post("/recalculate", async (request, reply) => {
     await auth.requirePermission(request, "churn.recalculate");
-    await directRetention.getSummary(requestSignal(request, reply));
+    await directRetention.getSummary(requestSignal(request, reply), true);
     return { status: "completed", source: "database" };
   });
   app.post("/customers/:customerId/recalculate", async (request, reply) => {

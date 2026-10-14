@@ -5,7 +5,8 @@ import { Database, CheckCircle2 } from "lucide-vue-next";
   <section class="panel p-5">
     <h1 class="flex items-center gap-2 text-xl font-bold"><Database class="h-5 w-5" aria-hidden="true" />Churn por consulta direta</h1>
     <p class="mt-3 text-sm text-slate-500">
-      A lista, os indicadores e os detalhes consultam as fontes do IXC ao abrir ou atualizar a análise.
+      A lista de scores usa um cache compartilhado no Redis por 12 horas. Os detalhes consultam o IXC e atualizam somente o cliente
+      analisado nesse cache. Marcações críticas e tratativas são aplicadas imediatamente.
     </p>
     <p class="mt-3 flex items-center gap-2 text-sm">
       <CheckCircle2 class="h-4 w-4 text-emerald-600" aria-hidden="true" />Não é necessário sincronizar dados nem aguardar tarefas em segundo

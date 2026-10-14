@@ -42,6 +42,7 @@ const workflowStatus = ref(String(savedFilters.workflowStatus ?? "OPEN"));
 const page = ref(1);
 const limit = ref(Number(savedFilters.limit) === 25 ? 25 : 10);
 const attentionSaving = ref<number | null>(null);
+const recalculating = ref(false);
 const moreFilters = ref(false);
 const secondaryCount = computed(() => [blocked.value, overdue.value, openSupport.value].filter(Boolean).length);
 const clearFilters = () => {
@@ -128,16 +129,31 @@ const load = (resetPage = false, refreshSummary = false) => {
   return store.loadDashboard(q, refreshSummary);
 };
 const refresh = () => load(false, true);
+const recalculateAll = async () => {
+  if (recalculating.value || !auth.can("churn.recalculate")) return;
+  recalculating.value = true;
+  try {
+    await api.recalculate();
+    await refresh();
+    toast.success("Lista recalculada", "O cache compartilhado foi renovado por 12 horas.");
+  } catch (error) {
+    toast.error("Falha ao recalcular a lista", error instanceof Error ? error.message : "Tente novamente.");
+  } finally {
+    recalculating.value = false;
+  }
+};
 const changePage = (next: number) => {
   page.value = Math.min(Math.max(1, next), totalPages.value);
   load();
 };
 const toggleAttention = async (customer: { customer_id: number; contract_id: number; attention_critical: boolean }) => {
   attentionSaving.value = customer.customer_id;
+  const wasCritical = customer.attention_critical;
   try {
-    await api.updateCustomerAttention(customer.customer_id, customer.contract_id, !customer.attention_critical);
-    toast.success(customer.attention_critical ? "Atenção crítica removida" : "Cliente marcado como crítico");
-    await refresh();
+    await api.updateCustomerAttention(customer.customer_id, customer.contract_id, !wasCritical);
+    store.updateAttention(customer.customer_id, customer.contract_id, !wasCritical);
+    toast.success(wasCritical ? "Atenção crítica removida" : "Cliente marcado como crítico");
+    await store.loadSummary();
   } catch (error) {
     toast.error("Falha ao atualizar atenção", error instanceof Error ? error.message : "Tente novamente.");
   } finally {
@@ -156,9 +172,28 @@ onMounted(refresh);
         </h1>
         <p class="mt-1 text-xs text-slate-500">Score explicável: financeiro, suporte, conexão, contrato e satisfação.</p>
       </div>
-      <button type="button" @click="refresh()" class="button-secondary" :disabled="store.loading || store.summaryLoading">
-        <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" focusable="false" />Atualizar painel
-      </button>
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          @click="refresh()"
+          class="button-secondary"
+          :disabled="recalculating || store.loading || store.summaryLoading"
+        >
+          <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" focusable="false" />Atualizar painel
+        </button>
+        <button
+          v-if="auth.can('churn.recalculate')"
+          type="button"
+          @click="recalculateAll"
+          class="button-primary"
+          :disabled="recalculating || store.loading || store.summaryLoading"
+          :aria-busy="recalculating"
+          title="Recalcula todos os clientes e renova o cache compartilhado por 12 horas."
+        >
+          <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': recalculating }" aria-hidden="true" focusable="false" />
+          {{ recalculating ? "Recalculando toda a lista…" : "Recalcular toda a lista" }}
+        </button>
+      </div>
     </section>
     <section
       class="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5"
@@ -230,7 +265,8 @@ onMounted(refresh);
                 : `${store.total.toLocaleString("pt-BR")} ${store.total === 1 ? "encontrado" : "encontrados"} · maior score primeiro`
           }}</span>
           <span v-if="store.listQueriedAt && !store.error" class="ml-auto text-[10px] text-slate-500"
-            >Lista consultada em {{ timestamp(store.listQueriedAt) }} · Atualizar painel busca dados atuais.</span
+            >Lista calculada em {{ timestamp(store.listQueriedAt)
+            }}<template v-if="store.listCache === 'redis'"> · Cache compartilhado até {{ timestamp(store.listReuseUntil) }}</template></span
           >
         </div>
         <form class="flex flex-wrap items-center gap-2" @submit.prevent="load(true)">

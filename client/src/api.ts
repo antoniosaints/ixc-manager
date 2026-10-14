@@ -108,9 +108,12 @@ export interface AuthUser {
 export const api = {
   summary: () => request<RetentionSummary>("/summary", { cache: "no-store" }),
   customers: (params: URLSearchParams, signal?: AbortSignal) =>
-    request<{ items: Customer[]; total: number; snapshotId?: string; queriedAt?: string; reuseUntil?: string }>(`/customers?${params}`, {
-      signal,
-    }),
+    request<{ items: Customer[]; total: number; snapshotId?: string; queriedAt?: string; reuseUntil?: string; cache?: "redis" | null }>(
+      `/customers?${params}`,
+      {
+        signal,
+      }
+    ),
   customer: (id: number, contractId?: number, signal?: AbortSignal) =>
     request<any>(`/customers/${id}${contractId ? `?contractId=${contractId}` : ""}`, { signal }),
   customerPdf: async (id: number, contractId: number, signal?: AbortSignal): Promise<Blob> => {

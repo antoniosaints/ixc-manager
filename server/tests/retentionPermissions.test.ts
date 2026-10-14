@@ -15,6 +15,37 @@ import { enqueueFullSync, retentionQueue } from "../src/queues/retentionQueue.js
 import { IxcReadDatabase } from "../src/integrations/ixc/database/IxcReadDatabase.js";
 import { RetentionSummaryService } from "../src/services/retention/RetentionSummaryService.js";
 afterEach(() => vi.restoreAllMocks());
+it("recalcula a carteira completa somente com permissão específica, mesmo antes do cache expirar", async () => {
+  const authenticated = vi.spyOn(AuthService.prototype, "authenticate").mockResolvedValue({
+    id: 2,
+    name: "Teste",
+    email: "test@example.test",
+    role: "USER",
+    permissions: ["churn.dashboard"],
+  });
+  const summary = vi.spyOn(DirectRetentionService.prototype, "getSummary").mockResolvedValue({} as any);
+  const app = Fastify();
+  await app.register(retentionRoutes, { prefix: "/api/retention" });
+  try {
+    const denied = await app.inject({ method: "POST", url: "/api/retention/recalculate" });
+    expect(denied.statusCode).toBe(403);
+    expect(summary).not.toHaveBeenCalled();
+    authenticated.mockResolvedValue({
+      id: 2,
+      name: "Teste",
+      email: "test@example.test",
+      role: "USER",
+      permissions: ["churn.dashboard", "churn.recalculate"],
+    });
+    const response = await app.inject({ method: "POST", url: "/api/retention/recalculate" });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.json()).toMatchObject({ status: "completed" });
+    expect(summary).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal), true);
+  } finally {
+    await app.close();
+  }
+});
 it("nega todas as ações de Churn sem permissão antes de acessar dados ou filas", async () => {
   vi.spyOn(AuthService.prototype, "authenticate").mockResolvedValue({
     id: 2,

@@ -16,9 +16,14 @@ export const useRetentionStore = defineStore("retention", {
     snapshotId: "",
     listQueriedAt: "",
     listReuseUntil: "",
+    listCache: "",
     listController: null as AbortController | null,
   }),
   actions: {
+    updateAttention(customerId: number, contractId: number, critical: boolean) {
+      const customer = this.customers.find((item) => item.customer_id === customerId && item.contract_id === contractId);
+      if (customer) customer.attention_critical = critical;
+    },
     async loadSummary() {
       if (this.summaryLoading) {
         this.summaryRefreshQueued = true;
@@ -58,6 +63,7 @@ export const useRetentionStore = defineStore("retention", {
         this.snapshotId = customers.snapshotId ?? "";
         this.listQueriedAt = customers.queriedAt ?? "";
         this.listReuseUntil = customers.reuseUntil ?? "";
+        this.listCache = customers.cache ?? "";
       } catch (error) {
         if (version === this.requestVersion) this.error = queryErrorMessage(error, "Não foi possível carregar os clientes.");
       } finally {
