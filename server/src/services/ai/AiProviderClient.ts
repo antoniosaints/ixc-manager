@@ -1,5 +1,6 @@
 import axios from "axios";
 import { z } from "zod";
+import { setTimeout as delay } from "node:timers/promises";
 
 export const aiProvider = z.enum(["openai", "gemini"]);
 export type AiProvider = z.infer<typeof aiProvider>;
@@ -49,11 +50,28 @@ function providerReason(error: unknown) {
   const remote = error.response?.data?.error;
   return `${String(remote?.message ?? "")} ${Array.isArray(remote?.details) ? remote.details.map((d: any) => (typeof d?.reason === "string" ? d.reason : "")).join(" ") : ""}`;
 }
+function transientCatalogFailure(error: unknown) {
+  if (!axios.isAxiosError(error)) return false;
+  return (
+    [408, 500, 502, 503, 504].includes(error.response?.status ?? 0) ||
+    (!error.response && ["ECONNRESET", "ETIMEDOUT", "ECONNABORTED", "EAI_AGAIN", "ERR_NETWORK"].includes(error.code ?? ""))
+  );
+}
 export class AiProviderClient {
   constructor(
     private readonly post = axios.post,
     private readonly get = axios.get
   ) {}
+  private async getCatalog(url: string, options: Parameters<typeof axios.get>[1]) {
+    try {
+      return await this.get(url, options);
+    } catch (error) {
+      // Only retry a read after a transient failure. Credentials, permissions and quota require action.
+      if (!transientCatalogFailure(error)) throw error;
+      await delay(500, undefined, { signal: options?.signal as AbortSignal | undefined });
+      return this.get(url, options);
+    }
+  }
   async models(configuration: Pick<AiConfiguration, "provider" | "key">, signal?: AbortSignal): Promise<AiModelOption[]> {
     signal?.throwIfAborted();
     if (!configuration.key) throw new Error("Chave de IA não cadastrada.");
@@ -64,7 +82,7 @@ export class AiProviderClient {
       models.set(normalized, { id: normalized, name: name?.trim() || normalized });
     };
     if (configuration.provider === "openai") {
-      const response = await this.get("https://api.openai.com/v1/models", {
+      const response = await this.getCatalog("https://api.openai.com/v1/models", {
         ...common,
         headers: { Authorization: `Bearer ${configuration.key}` },
       });
@@ -77,7 +95,7 @@ export class AiProviderClient {
       for (let page = 0; ; page++) {
         signal?.throwIfAborted();
         if (page >= 20) throw new Error("Limite de páginas de modelos excedido.");
-        const response = await this.get("https://generativelanguage.googleapis.com/v1beta/models", {
+        const response = await this.getCatalog("https://generativelanguage.googleapis.com/v1beta/models", {
           ...common,
           headers: { "x-goog-api-key": configuration.key },
           params: { pageSize: 1000, ...(pageToken ? { pageToken } : {}) },
@@ -187,11 +205,111 @@ export class AiProviderClient {
 }
 
 export function aiModelsFailure(error: unknown) {
+  return modelsDiagnostic(error).message;
+}
+
+function modelsDiagnostic(error: unknown) {
   const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+  const reason = providerReason(error);
+  const result = (code: string, message: string, retryable = false) => ({
+    code,
+    message,
+    providerStatus: typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599 ? status : null,
+    retryable,
+  });
+  if (/API_KEY_INVALID|API_KEY_EXPIRED|API_KEY_NOT_FOUND|API key not valid|invalid api key|api key.*expired/i.test(reason))
+    return result(
+      "API_KEY_INVALID",
+      "A chave da API foi recusada ou expirou. Cadastre uma chave válida do provedor e salve antes de atualizar os modelos."
+    );
+  if (/leaked|API_KEY_BLOCKED|API_KEY_COMPROMISED/i.test(reason))
+    return result(
+      "API_KEY_BLOCKED",
+      "O provedor bloqueou esta chave. Gere uma nova chave no painel do provedor e cadastre-a nas configurações."
+    );
+  if (/API_KEY_(SERVICE|IP_ADDRESS|HTTP_REFERRER|ANDROID_APP|IOS_APP)_BLOCKED|unrestricted.*key|key.*unrestricted/i.test(reason))
+    return result(
+      "API_KEY_RESTRICTED",
+      "As restrições da chave impedem o acesso pelo backend. No provedor, autorize a Gemini API e o servidor que executa o sistema."
+    );
+  if (/SERVICE_DISABLED|API_DISABLED|has not been used.*disabled|api.*not enabled/i.test(reason))
+    return result(
+      "SERVICE_DISABLED",
+      "A Gemini API não está habilitada no projeto desta chave. Habilite a Generative Language API no projeto do Google e atualize os modelos."
+    );
+  if (/location.*not supported|country.*not supported|unsupported.*(location|country|region)/i.test(reason))
+    return result(
+      "REGION_UNSUPPORTED",
+      "O Gemini não está disponível para a localização do servidor. Confira a região de hospedagem e a disponibilidade da API."
+    );
+  if (/billing|free tier|paid tier|FAILED_PRECONDITION/i.test(reason))
+    return result(
+      "BILLING_REQUIRED",
+      "O provedor exige revisar o faturamento ou a elegibilidade do projeto desta chave antes de listar modelos."
+    );
   if (status === 401 || status === 403)
-    return "O provedor recusou a chave cadastrada ou a permissão de listar modelos. Confira a chave e as permissões do projeto.";
-  if (status === 429) return "O provedor limitou a consulta de modelos. Aguarde e tente atualizar a lista.";
-  return "Não foi possível carregar os modelos do provedor. Confira a chave cadastrada, sua conexão e tente atualizar a lista.";
+    return result(
+      "ACCESS_DENIED",
+      "O provedor recusou a chave cadastrada ou a permissão de listar modelos. Confira a chave e as permissões do projeto."
+    );
+  if (status === 429)
+    return result("RATE_LIMITED", "O provedor limitou a consulta de modelos. Confira a cota, aguarde e tente atualizar a lista.", true);
+  if (status === 400)
+    return result(
+      "INVALID_REQUEST",
+      "O provedor recusou a consulta de modelos (HTTP 400). Confira o tipo da chave, as restrições e a habilitação da API no projeto."
+    );
+  if (status === 404) return result("CATALOG_NOT_FOUND", "O catálogo de modelos não está disponível nesta API para a chave cadastrada.");
+  if (status && status >= 500)
+    return result("PROVIDER_UNAVAILABLE", "O provedor está temporariamente indisponível. Aguarde e atualize a lista de modelos.", true);
+  const code = axios.isAxiosError(error) ? error.code : undefined;
+  if (
+    ["ERR_CANCELED", "ECONNABORTED", "ETIMEDOUT"].includes(code ?? "") ||
+    (error instanceof Error && /AbortError|TimeoutError/.test(error.name))
+  )
+    return result(
+      "CONNECTION_TIMEOUT",
+      "A consulta de modelos excedeu o tempo limite. Confira a conexão de saída do backend com o provedor e tente novamente.",
+      true
+    );
+  if (["ENOTFOUND", "EAI_AGAIN"].includes(code ?? ""))
+    return result(
+      "DNS_ERROR",
+      "O servidor não conseguiu resolver o endereço da API. Confira o DNS e a conexão de saída da hospedagem.",
+      true
+    );
+  if (/CERT|TLS|SSL|SELF_SIGNED|UNABLE_TO_VERIFY/i.test(code ?? ""))
+    return result(
+      "TLS_ERROR",
+      "O backend não conseguiu validar o certificado HTTPS do provedor. Confira os certificados e o proxy da hospedagem."
+    );
+  if (["ECONNRESET", "ECONNREFUSED", "ENETUNREACH", "EHOSTUNREACH", "ERR_NETWORK"].includes(code ?? ""))
+    return result(
+      "NETWORK_ERROR",
+      "O backend não conseguiu se conectar à API do provedor. Confira a rede, o firewall e o proxy da hospedagem.",
+      true
+    );
+  if (error instanceof z.ZodError)
+    return result(
+      "INVALID_CATALOG",
+      "O provedor retornou um catálogo de modelos em formato inesperado. Atualize a lista; se persistir, confira o proxy da hospedagem."
+    );
+  return result(
+    "MODELS_UNAVAILABLE",
+    "Não foi possível carregar os modelos do provedor. Confira a chave cadastrada, sua conexão e tente atualizar a lista.",
+    true
+  );
+}
+
+/** Only allowlisted diagnostic fields cross the HTTP boundary, never the original transport error. */
+export class AiModelsError extends Error {
+  readonly statusCode = 422;
+  readonly diagnostic: ReturnType<typeof modelsDiagnostic> & { provider: AiProvider };
+  constructor(provider: AiProvider, error: unknown) {
+    const diagnostic = modelsDiagnostic(error);
+    super(diagnostic.message);
+    this.diagnostic = { ...diagnostic, provider };
+  }
 }
 
 /** Only fixed messages are surfaced, never Axios errors containing headers or prompts. */

@@ -4,7 +4,7 @@ import { env } from "../../config/env.js";
 import {
   AiProviderClient,
   aiConnectionFailure,
-  aiModelsFailure,
+  AiModelsError,
   aiModel,
   aiProvider,
   type AiConfiguration,
@@ -187,7 +187,7 @@ export class AiSettingsService {
       return { provider, models };
     } catch (error) {
       signal?.throwIfAborted();
-      throw fail(aiModelsFailure(error), 422);
+      throw new AiModelsError(provider, error);
     }
   }
   async save(input: unknown, userId: number) {

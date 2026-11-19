@@ -4,7 +4,7 @@ import { join } from "node:path";
 import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AiSecretVault } from "../src/services/ai/AiSecretVault.js";
-import { AiProviderClient, aiConnectionFailure } from "../src/services/ai/AiProviderClient.js";
+import { AiProviderClient, AiModelsError, aiConnectionFailure } from "../src/services/ai/AiProviderClient.js";
 import {
   AiSettingsService,
   AiSettingsRepository,
@@ -166,6 +166,125 @@ describe("Cadastro de IA pela aplicação", () => {
   });
 });
 describe("Modelos retornados pelos provedores", () => {
+  it("carrega o catálogo Gemini pelo endpoint administrativo usando a chave salva", async () => {
+    const f = await fixture();
+    await f.service.save({ revision: 0, configuration: draft() }, 1);
+    const models = f.service.models.bind(f.service);
+    vi.spyOn(AiSettingsService.prototype, "models").mockImplementation(models);
+    vi.spyOn(AuthService.prototype, "authenticate").mockResolvedValue({ id: 1, role: "ADMIN" } as never);
+    f.get.mockResolvedValueOnce({
+      data: { models: [{ name: "models/gemini-live", displayName: "Gemini Live", supportedGenerationMethods: ["generateContent"] }] },
+    });
+    const app = Fastify();
+    await app.register(settingsRoutes, { prefix: "/api/settings" });
+    try {
+      const response = await app.inject({ url: "/api/settings/ai/models?provider=gemini" });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ provider: "gemini", models: [{ id: "gemini-live", name: "Gemini Live" }] });
+      expect(f.get.mock.calls[0]?.[1]).toMatchObject({ headers: { "x-goog-api-key": "key-gemini-private" }, params: { pageSize: 1000 } });
+      expect(response.body).not.toContain("key-gemini-private");
+      expect(f.post).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+  it("identifica a recusa HTTP 400 do Gemini sem esconder a causa nem expor a chave", async () => {
+    const f = await fixture();
+    await f.service.save({ revision: 0, configuration: draft() }, 1);
+    const models = f.service.models.bind(f.service);
+    vi.spyOn(AiSettingsService.prototype, "models").mockImplementation(models);
+    vi.spyOn(AuthService.prototype, "authenticate").mockResolvedValue({ id: 1, role: "ADMIN" } as never);
+    f.get.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: {
+        status: 400,
+        data: {
+          error: { message: "API key not valid PRIVATE_REMOTE_BODY", status: "INVALID_ARGUMENT", details: [{ reason: "API_KEY_INVALID" }] },
+        },
+      },
+      config: { headers: { "x-goog-api-key": "key-gemini-private" } },
+    });
+    const app = Fastify();
+    await app.register(settingsRoutes, { prefix: "/api/settings" });
+    try {
+      const response = await app.inject({ url: "/api/settings/ai/models?provider=gemini" });
+      expect(response.statusCode).toBe(422);
+      expect(response.json()).toMatchObject({ provider: "gemini", code: "API_KEY_INVALID", providerStatus: 400, retryable: false });
+      expect(response.json().message).toContain("Cadastre uma chave válida");
+      expect(response.body).not.toMatch(/PRIVATE_REMOTE_BODY|key-gemini-private|x-goog-api-key/);
+      expect(f.get).toHaveBeenCalledOnce();
+    } finally {
+      await app.close();
+    }
+  });
+  it.each([
+    [400, "API_KEY_EXPIRED", "API_KEY_INVALID"],
+    [403, "Your API key was reported as leaked", "API_KEY_BLOCKED"],
+    [403, "API_KEY_HTTP_REFERRER_BLOCKED", "API_KEY_RESTRICTED"],
+    [403, "API_KEY_IP_ADDRESS_BLOCKED", "API_KEY_RESTRICTED"],
+    [403, "API_KEY_SERVICE_BLOCKED", "API_KEY_RESTRICTED"],
+    [400, "Unrestricted API keys are not supported", "API_KEY_RESTRICTED"],
+    [403, "SERVICE_DISABLED", "SERVICE_DISABLED"],
+    [400, "User location is not supported for the API use", "REGION_UNSUPPORTED"],
+    [400, "FAILED_PRECONDITION billing", "BILLING_REQUIRED"],
+    [403, "Permission denied", "ACCESS_DENIED"],
+    [400, "Invalid argument", "INVALID_REQUEST"],
+    [429, "Quota exhausted", "RATE_LIMITED"],
+    [503, "Unavailable", "PROVIDER_UNAVAILABLE"],
+  ])("distingue o erro do provedor %s/%s como %s", (status, reason, code) => {
+    const error = new AiModelsError("gemini", {
+      isAxiosError: true,
+      response: { status, data: { error: { message: "PRIVATE_BODY", details: [{ reason }] } } },
+      config: { headers: { "x-goog-api-key": "PRIVATE_KEY" } },
+    });
+    expect(error.diagnostic).toMatchObject({ provider: "gemini", code, providerStatus: status });
+    expect(JSON.stringify(error.diagnostic)).not.toContain("PRIVATE");
+    expect(error.diagnostic).not.toHaveProperty("headers");
+    expect(error.diagnostic).not.toHaveProperty("config");
+  });
+  it.each([
+    ["ENOTFOUND", "DNS_ERROR"],
+    ["ERR_CANCELED", "CONNECTION_TIMEOUT"],
+    ["ECONNABORTED", "CONNECTION_TIMEOUT"],
+    ["CERT_HAS_EXPIRED", "TLS_ERROR"],
+    ["ENETUNREACH", "NETWORK_ERROR"],
+  ])("identifica falhas de rede %s sem confundi-las com uma chave inválida", (code, expected) => {
+    expect(new AiModelsError("gemini", { isAxiosError: true, code }).diagnostic).toMatchObject({
+      provider: "gemini",
+      code: expected,
+      providerStatus: null,
+    });
+  });
+  it("recupera uma falha transitória do catálogo sem gerar conteúdo nem trocar credenciais", async () => {
+    const get = vi
+      .fn()
+      .mockRejectedValueOnce({ isAxiosError: true, response: { status: 503 } })
+      .mockResolvedValueOnce({
+        data: { models: [{ name: "models/gemini-live", supportedGenerationMethods: ["generateContent"] }] },
+      });
+    const post = vi.fn();
+    expect(await new AiProviderClient(post, get).models({ provider: "gemini", key: "PRIVATE_KEY" })).toEqual([
+      { id: "gemini-live", name: "gemini-live" },
+    ]);
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(get.mock.calls[0]).toEqual(get.mock.calls[1]);
+    expect(post).not.toHaveBeenCalled();
+  });
+  it.each([400, 401, 403, 429])("não repete listagem recusada por credenciais, projeto ou cota (HTTP %s)", async (status) => {
+    const error = { isAxiosError: true, response: { status } };
+    const get = vi.fn().mockRejectedValue(error);
+    await expect(new AiProviderClient(vi.fn(), get).models({ provider: "gemini", key: "KEY" })).rejects.toBe(error);
+    expect(get).toHaveBeenCalledOnce();
+  });
+  it("interrompe a espera de repetição quando a consulta é cancelada", async () => {
+    const controller = new AbortController();
+    const get = vi.fn().mockImplementation(async () => {
+      controller.abort();
+      throw { isAxiosError: true, code: "ECONNRESET" };
+    });
+    await expect(new AiProviderClient(vi.fn(), get).models({ provider: "gemini", key: "KEY" }, controller.signal)).rejects.toThrow();
+    expect(get).toHaveBeenCalledOnce();
+  });
   it("carrega OpenAI com autenticação no header, remove duplicados e retorna somente identificação", async () => {
     const get = vi.fn().mockResolvedValue({
       data: { data: [{ id: "gpt-z", owned_by: "PRIVATE" }, { id: "ft:gpt-test:org::123" }, { id: "gpt-a" }, { id: "gpt-a" }] },

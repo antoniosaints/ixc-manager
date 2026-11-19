@@ -6,6 +6,7 @@ import { SettingsService } from "../services/settings/SettingsService.js";
 import { AnalyticsSettingsService } from "../services/settings/AnalyticsSettingsService.js";
 import { churnSettings } from "../services/settings/ChurnSettingsService.js";
 import { AiSettingsService, aiSettingsDraft, aiSettingsSave, aiModelsQuery } from "../services/settings/AiSettingsService.js";
+import { AiModelsError } from "../services/ai/AiProviderClient.js";
 
 export async function settingsRoutes(app: FastifyInstance) {
   const auth = new AuthService(),
@@ -17,6 +18,9 @@ export async function settingsRoutes(app: FastifyInstance) {
     reply.header("Cache-Control", "no-store");
   });
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof AiModelsError) {
+      return reply.code(error.statusCode).send(error.diagnostic);
+    }
     const status = error instanceof z.ZodError ? 400 : Number((error as { statusCode?: number }).statusCode ?? 500);
     reply.code(status).send({
       message:
