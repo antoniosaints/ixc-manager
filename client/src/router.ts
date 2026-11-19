@@ -52,6 +52,11 @@ const router = createRouter({
     { path: "/support", component: SupportView, meta: { module: "support", permission: "support.customers.view" } },
     { path: "/support/contracts", component: SupportContractsView, meta: { module: "support", permission: "support.contract.view" } },
     { path: "/support/orders", component: SupportOrdersView, meta: { module: "support", permission: "support.orders.view" } },
+    {
+      path: "/support/order-analysis",
+      component: () => import("./views/OrderAnalysisView.vue"),
+      meta: { module: "support", permission: "support.orders.analyze" },
+    },
     { path: "/support/customers/:id", component: SupportCustomerView, meta: { module: "support", permission: "support.customer.view" } },
     { path: "/support/contracts/:id", component: UpgradeContractView, meta: { module: "support", permission: "support.contract.view" } },
     { path: "/upgrades", component: UpgradesView, meta: { module: "upgrades", permission: "upgrades.opportunities.view" } },
@@ -72,6 +77,7 @@ const router = createRouter({
         { path: "appearance", component: AppearanceView },
         { path: "analytics", component: AnalyticsSettingsView },
         { path: "churn", component: ChurnSettingsView },
+        { path: "ai", component: () => import("./views/AiSettingsView.vue") },
         { path: "users", component: UsersView },
         { path: "profiles", component: PermissionProfilesView },
       ],
@@ -92,6 +98,7 @@ router.beforeEach(async (to) => {
   if (!auth.user) return "/login";
   if (to.meta.admin && !auth.isAdmin) return auth.home;
   if (typeof to.meta.permission === "string" && !auth.can(to.meta.permission)) return auth.home;
+  if (to.path === "/support/order-analysis" && !auth.can("support.orders.view")) return auth.home;
   return true;
 });
 export default router;

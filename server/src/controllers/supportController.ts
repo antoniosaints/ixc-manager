@@ -11,6 +11,7 @@ import { SupportOrderFilesService } from "../services/support/SupportOrderFilesS
 import { SupportOrdersService, supportOrdersQuery } from "../services/support/SupportOrdersService.js";
 import { SupportContractsService, supportContractsQuery } from "../services/support/SupportContractsService.js";
 import { CustomerGraphService } from "../services/support/CustomerGraphService.js";
+import { OrderAnalysisService, orderAnalysisQuery } from "../services/support/OrderAnalysisService.js";
 
 const pagination = z.object({
   ...columnSortFields,
@@ -35,6 +36,8 @@ export async function supportRoutes(app: FastifyInstance) {
   const customerService = new SupportCustomerService();
   const orderFiles = new SupportOrderFilesService();
   const orders = new SupportOrdersService();
+  const orderAnalysis = new OrderAnalysisService();
+  app.addHook("onClose", () => orderAnalysis.close());
   const contracts = new SupportContractsService();
   const graph = new CustomerGraphService();
   app.addHook("onClose", () => graph.close());
@@ -70,6 +73,33 @@ export async function supportRoutes(app: FastifyInstance) {
   app.get("/customers", options, async (request) => {
     await auth.requirePermission(request, "support.customers.view");
     return service.customers(supportCustomerQuery.parse(request.query));
+  });
+  app.get("/order-analysis/subjects", options, async (request, reply) => {
+    await auth.requirePermission(request, "support.orders.view", "support.orders.analyze");
+    const controller = new AbortController();
+    const disconnected = () => {
+      if (!reply.raw.writableEnded) controller.abort();
+    };
+    reply.raw.on("close", disconnected);
+    try {
+      return await orderAnalysis.subjects(controller.signal);
+    } finally {
+      reply.raw.off("close", disconnected);
+    }
+  });
+  app.post("/order-analysis", options, async (request, reply) => {
+    await auth.requirePermission(request, "support.orders.view", "support.orders.analyze");
+    const query = orderAnalysisQuery.parse(request.body);
+    const controller = new AbortController();
+    const disconnected = () => {
+      if (!reply.raw.writableEnded) controller.abort();
+    };
+    reply.raw.on("close", disconnected);
+    try {
+      return await orderAnalysis.analyze(query, controller.signal);
+    } finally {
+      reply.raw.off("close", disconnected);
+    }
   });
   for (const path of ["/contracts", "/contracts/filters"] as const) {
     app.get(path, options, async (request, reply) => {

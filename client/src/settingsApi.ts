@@ -1,5 +1,25 @@
 import { apiFetch } from "./http";
 import { defaultTypography, type Typography } from "./typography";
+export type AiProvider = "openai" | "gemini";
+export interface AiSettings {
+  provider: AiProvider;
+  revision: number;
+  providers: Record<AiProvider, { model: string; keySource: "saved" | "environment" | "none"; configured: boolean }>;
+  modelSuggestions: Record<AiProvider, string[]>;
+}
+export interface AiSettingsDraft {
+  provider: AiProvider;
+  model: string;
+  keyAction: "keep" | "replace" | "remove";
+  apiKey: string;
+}
+export interface AiConnectionTest {
+  provider: AiProvider;
+  model: string;
+  ok: boolean;
+  durationMs: number;
+  message: string;
+}
 export interface Palette {
   background: string;
   surface: string;
@@ -85,10 +105,11 @@ export const defaultAppearance: Appearance = {
     network: "#38bdf8",
   },
 };
-async function request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+async function request<T>(path: string, method = "GET", body?: unknown, signal?: AbortSignal): Promise<T> {
   const token = localStorage.getItem("retencao-cas.auth-token");
   const response = await apiFetch(`/api/settings${path}`, {
     method,
+    signal,
     cache: "no-store",
     headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}),
@@ -100,6 +121,10 @@ async function request<T>(path: string, method = "GET", body?: unknown): Promise
   return response.json();
 }
 export const settingsApi = {
+  ai: (signal?: AbortSignal) => request<AiSettings>("/ai", "GET", undefined, signal),
+  saveAi: (value: { revision: number; configuration: AiSettingsDraft }, signal?: AbortSignal) =>
+    request<AiSettings>("/ai", "PUT", value, signal),
+  testAi: (value: AiSettingsDraft, signal?: AbortSignal) => request<AiConnectionTest>("/ai/test", "POST", value, signal),
   churn: () => request<ChurnSettingsResponse>("/churn"),
   saveChurn: (value: ChurnSettings) => request<ChurnSettings>("/churn", "PUT", value),
   analytics: () => request<AnalyticsSettingsResponse>("/analytics"),

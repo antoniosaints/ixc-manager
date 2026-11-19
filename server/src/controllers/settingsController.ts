@@ -5,11 +5,13 @@ import { SettingsService } from "../services/settings/SettingsService.js";
 
 import { AnalyticsSettingsService } from "../services/settings/AnalyticsSettingsService.js";
 import { churnSettings } from "../services/settings/ChurnSettingsService.js";
+import { AiSettingsService, aiSettingsDraft, aiSettingsSave } from "../services/settings/AiSettingsService.js";
 
 export async function settingsRoutes(app: FastifyInstance) {
   const auth = new AuthService(),
     service = new SettingsService(),
-    analytics = new AnalyticsSettingsService();
+    analytics = new AnalyticsSettingsService(),
+    ai = new AiSettingsService();
   app.addHook("onClose", () => analytics.close());
   app.addHook("onRequest", async (_request, reply) => {
     reply.header("Cache-Control", "no-store");
@@ -33,6 +35,30 @@ export async function settingsRoutes(app: FastifyInstance) {
   app.get("/analytics", { logLevel: "silent" }, async (request) => {
     await auth.requireUser(request, ["ADMIN"]);
     return analytics.get();
+  });
+  app.get("/ai", { logLevel: "silent" }, async (request) => {
+    await auth.requireUser(request, ["ADMIN"]);
+    return ai.get();
+  });
+  app.put("/ai", { logLevel: "silent", bodyLimit: 8192 }, async (request) => {
+    const user = await auth.requireUser(request, ["ADMIN"]);
+    return ai.save(aiSettingsSave.parse(request.body), user.id);
+  });
+  app.post("/ai/test", { logLevel: "silent", bodyLimit: 8192 }, async (request, reply) => {
+    await auth.requireUser(request, ["ADMIN"]);
+    const draft = aiSettingsDraft.parse(request.body),
+      controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 55000);
+    const disconnected = () => {
+      if (!reply.raw.writableEnded) controller.abort();
+    };
+    reply.raw.on("close", disconnected);
+    try {
+      return await ai.test(draft, controller.signal);
+    } finally {
+      clearTimeout(timeout);
+      reply.raw.off("close", disconnected);
+    }
   });
   app.get("/churn", { logLevel: "silent" }, async (request) => {
     await auth.requireUser(request, ["ADMIN"]);

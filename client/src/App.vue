@@ -19,6 +19,7 @@ import {
   Wrench,
   FileText,
   Trophy,
+  Sparkles,
 } from "lucide-vue-next";
 import { useAuthStore } from "./stores/auth";
 import AppSidebar from "./components/AppSidebar.vue";
@@ -305,6 +306,14 @@ const logout = async () => {
           >
             <Wrench class="mr-1 inline h-4 w-4" aria-hidden="true" />Ordens de serviço
           </RouterLink>
+          <RouterLink
+            v-if="auth.can('support.orders.view') && auth.can('support.orders.analyze')"
+            to="/support/order-analysis"
+            class="rounded-lg px-3 py-2 hover:bg-slate-100"
+            :class="{ 'support-nav-active': route.path === '/support/order-analysis' }"
+            :aria-current="route.path === '/support/order-analysis' ? 'page' : undefined"
+            ><Sparkles class="mr-1 inline h-4 w-4" aria-hidden="true" />Análise de OS com IA</RouterLink
+          >
           <button type="button" @click="upgradesRefresh++" class="button-primary ml-2 !px-3 !py-2">
             <RefreshCw class="h-4 w-4" aria-hidden="true" focusable="false" />Atualizar consulta
           </button>
