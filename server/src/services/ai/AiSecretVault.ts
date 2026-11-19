@@ -2,11 +2,18 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile, link, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-export class AiSecretUnavailableError extends Error {}
+export class AiSecretUnavailableError extends Error {
+  constructor(
+    message: string,
+    readonly recovery: "credential" | "backend" = "credential"
+  ) {
+    super(message);
+  }
+}
 
 export class AiSecretVault {
   constructor(private readonly directory = fileURLToPath(new URL("../../../data/ai-secrets/", import.meta.url))) {}
-  private async master(create: boolean): Promise<Buffer> {
+  protected async master(create: boolean): Promise<Buffer> {
     const path = resolve(this.directory, "master.key");
     try {
       const key = await readFile(path);
@@ -38,11 +45,18 @@ export class AiSecretVault {
     return ["v1", iv.toString("base64"), cipher.getAuthTag().toString("base64"), body.toString("base64")].join(":");
   }
   async decrypt(value: string, provider: string) {
-    const [version, iv, tag, body, extra] = value.split(":");
-    if (version !== "v1" || !iv || !tag || !body || extra) throw new Error("Segredo de IA inválido.");
-    const decipher = createDecipheriv("aes-256-gcm", await this.master(false), Buffer.from(iv, "base64"));
-    decipher.setAAD(Buffer.from(`retencao-cas:ai:${provider}:v1`));
-    decipher.setAuthTag(Buffer.from(tag, "base64"));
-    return Buffer.concat([decipher.update(Buffer.from(body, "base64")), decipher.final()]).toString("utf8");
+    try {
+      const [version, iv, tag, body, extra] = value.split(":");
+      if (version !== "v1" || !iv || !tag || !body || extra) throw new Error("Formato inválido.");
+      const decipher = createDecipheriv("aes-256-gcm", await this.master(false), Buffer.from(iv, "base64"));
+      decipher.setAAD(Buffer.from(`retencao-cas:ai:${provider}:v1`));
+      decipher.setAuthTag(Buffer.from(tag, "base64"));
+      return Buffer.concat([decipher.update(Buffer.from(body, "base64")), decipher.final()]).toString("utf8");
+    } catch (error) {
+      if (error instanceof AiSecretUnavailableError) throw error;
+      throw new AiSecretUnavailableError(
+        "Não foi possível abrir a credencial com a proteção atual. Restaure a proteção original ou recadastre a chave."
+      );
+    }
   }
 }

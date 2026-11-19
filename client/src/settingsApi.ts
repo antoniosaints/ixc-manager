@@ -4,7 +4,10 @@ export type AiProvider = "openai" | "gemini";
 export interface AiSettings {
   provider: AiProvider;
   revision: number;
-  providers: Record<AiProvider, { model: string; keySource: "saved" | "environment" | "none"; configured: boolean }>;
+  providers: Record<
+    AiProvider,
+    { model: string; keySource: "saved" | "environment" | "none"; configured: boolean; protectionError?: string | null }
+  >;
 }
 export interface AiModelsResponse {
   provider: AiProvider;

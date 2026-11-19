@@ -45,6 +45,7 @@ const schema = z.object({
     z.string().trim().min(1).optional()
   ),
   OPENAI_MODEL: z.string().trim().min(1).default("gpt-4.1-mini"),
+  AI_ENCRYPTION_SECRET: z.preprocess((v) => (typeof v === "string" && !v.trim() ? undefined : v), z.string().min(32).optional()),
   FRONTEND_DIST: z.string().min(1).optional(),
   CORS_ORIGIN: z.string().url().default("http://localhost:5173"),
 });

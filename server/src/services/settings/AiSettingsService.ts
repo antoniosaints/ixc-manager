@@ -11,6 +11,7 @@ import {
   type AiProvider,
 } from "../ai/AiProviderClient.js";
 import { AiSecretVault, AiSecretUnavailableError } from "../ai/AiSecretVault.js";
+import { PersistentAiSecretVault } from "../ai/PersistentAiSecretVault.js";
 
 const entry = z
   .object({ model: aiModel, keySource: z.enum(["saved", "environment", "none"]), encryptedKey: z.string().nullable() })
@@ -90,7 +91,7 @@ export class AiSettingsRepository implements AiSettingsStore {
 export class AiSettingsService {
   constructor(
     private readonly store: AiSettingsStore = new AiSettingsRepository(),
-    private readonly vault = new AiSecretVault(),
+    private readonly vault: AiSecretVault = new PersistentAiSecretVault(),
     private readonly client = new AiProviderClient()
   ) {}
   private defaults(): Stored {
@@ -105,17 +106,29 @@ export class AiSettingsService {
   private async read() {
     return (await this.store.read()) ?? { configuration: this.defaults(), revision: 0 };
   }
-  private public(configuration: Stored, revision: number) {
-    const state = (provider: AiProvider) => {
+  private async public(configuration: Stored, revision: number) {
+    const state = async (provider: AiProvider) => {
       const v = configuration.providers[provider];
       const configured =
         v.keySource === "saved" ? !!v.encryptedKey : v.keySource === "environment" && provider === "openai" && !!env.OPENAI_API_KEY;
-      return { model: v.model, keySource: v.keySource, configured };
+      let protectionError: string | null = null;
+      if (configured && v.keySource === "saved") {
+        try {
+          await this.key(configuration, provider);
+        } catch (error) {
+          protectionError =
+            (error as { statusCode?: number }).statusCode === 409
+              ? (error as Error).message
+              : "Não foi possível verificar a proteção desta credencial. Tente recarregar as configurações.";
+        }
+      }
+      return { model: v.model, keySource: v.keySource, configured, protectionError };
     };
+    const [openai, gemini] = await Promise.all([state("openai"), state("gemini")]);
     return {
       provider: configuration.provider,
       revision,
-      providers: { openai: state("openai"), gemini: state("gemini") },
+      providers: { openai, gemini },
     };
   }
   async get() {
@@ -127,7 +140,7 @@ export class AiSettingsService {
     return {
       provider: value.provider,
       model: value.providers[value.provider].model,
-      configured: value.providers[value.provider].configured,
+      configured: value.providers[value.provider].configured && !value.providers[value.provider].protectionError,
     };
   }
   private async key(configuration: Stored, provider: AiProvider) {
@@ -138,7 +151,9 @@ export class AiSettingsService {
       } catch (error) {
         if (error instanceof AiSecretUnavailableError)
           throw fail(
-            "A proteção da chave cadastrada não está disponível neste servidor. Restaure o volume de segredos ou cadastre novamente a chave da API.",
+            error.recovery === "backend"
+              ? "A proteção persistente não pôde ser aberta. Restaure o segredo do backend usado ao cadastrar as chaves antes de continuar."
+              : "A proteção anterior não pôde ser aberta. Restaure o arquivo original ou cadastre novamente a chave da API. Novos cadastros usam proteção persistente no banco.",
             409
           );
         throw error;
@@ -148,10 +163,17 @@ export class AiSettingsService {
   }
   async runtime(): Promise<AiConfiguration> {
     const { configuration } = await this.read();
+    let key: string | null;
+    try {
+      key = await this.key(configuration, configuration.provider);
+    } catch (error) {
+      if ((error as { statusCode?: number }).statusCode !== 409) throw error;
+      key = null;
+    }
     return {
       provider: configuration.provider,
       model: configuration.providers[configuration.provider].model,
-      key: await this.key(configuration, configuration.provider),
+      key,
     };
   }
   async models(input: unknown, signal?: AbortSignal) {

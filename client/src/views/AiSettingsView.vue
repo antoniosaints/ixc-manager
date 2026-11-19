@@ -41,7 +41,9 @@ const dirty = computed(
     !!settings.value &&
     (provider.value !== settings.value.provider || model.value !== current.value?.model || !!apiKey.value || removeKey.value)
 );
-const canTest = computed(() => valid.value && !removeKey.value && (!!apiKey.value.trim() || current.value?.configured));
+const canTest = computed(
+  () => valid.value && !removeKey.value && (!!apiKey.value.trim() || (current.value?.configured && !current.value.protectionError))
+);
 let controller: AbortController | undefined;
 let modelsController: AbortController | undefined;
 async function loadModels() {
@@ -52,7 +54,7 @@ async function loadModels() {
   modelsError.value = "";
   modelsLoaded.value = false;
   modelsLoading.value = false;
-  if (!settings.value?.providers[selectedProvider].configured) return;
+  if (!settings.value?.providers[selectedProvider].configured || settings.value.providers[selectedProvider].protectionError) return;
   modelsLoading.value = true;
   try {
     const data = await settingsApi.aiModels(selectedProvider, active.signal);
@@ -160,9 +162,16 @@ onBeforeUnmount(() => {
       <div class="rounded-lg bg-slate-50 p-3 text-xs">
         <strong>Provedor ativo:</strong> {{ labels[settings.provider] }} · {{ settings.providers[settings.provider].model
         }}<span class="mt-1 block text-xs text-slate-500">{{
-          settings.providers[settings.provider].configured ? "Chave configurada." : "Cadastre uma chave para habilitar o resumo por IA."
+          settings.providers[settings.provider].protectionError
+            ? "A chave cadastrada precisa ser recuperada ou substituída."
+            : settings.providers[settings.provider].configured
+              ? "Chave configurada e proteção disponível."
+              : "Cadastre uma chave para habilitar o resumo por IA."
         }}</span>
       </div>
+      <p v-if="current?.protectionError" role="alert" class="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+        {{ current.protectionError }} O novo cadastro usará proteção persistente, sem depender de um arquivo do contêiner.
+      </p>
       <fieldset class="grid gap-4 sm:grid-cols-2" :disabled="busy">
         <legend class="sr-only">Provedor e modelo de IA</legend>
         <SearchableSelect
@@ -185,10 +194,12 @@ onBeforeUnmount(() => {
       </fieldset>
       <div class="!mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
         <p v-if="modelsLoading" role="status">Carregando modelos da API de {{ labels[provider] }}…</p>
-        <p v-else-if="!current?.configured">Cadastre e salve a chave deste provedor para carregar os modelos automaticamente.</p>
+        <p v-else-if="!current?.configured || current.protectionError">
+          Cadastre e salve uma chave utilizável para carregar os modelos automaticamente.
+        </p>
         <p v-else-if="modelsLoaded" role="status">{{ models.length }} modelo(s) retornado(s) pela API de {{ labels[provider] }}.</p>
         <button
-          v-if="current?.configured"
+          v-if="current?.configured && !current.protectionError"
           type="button"
           class="button-secondary !px-3 !py-1.5"
           :disabled="busy || modelsLoading"
