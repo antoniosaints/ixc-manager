@@ -1,7 +1,7 @@
 import axios from "axios";
 import { z } from "zod";
 import { env } from "../../config/env.js";
-import { AiProviderClient, type AiConfiguration, type AiProvider } from "./AiProviderClient.js";
+import { AiProviderClient, AiGenerationError, type AiConfiguration, type AiProvider } from "./AiProviderClient.js";
 
 const finding = z.object({
   title: z.string().min(1).max(200),
@@ -33,7 +33,7 @@ const jsonSchema = {
   additionalProperties: false,
   required: ["summary", "findings", "actions", "limitations"],
   properties: {
-    summary: { type: "string" },
+    summary: { type: "string", description: "Resumo objetivo em português, com até 1800 caracteres; limite absoluto de 6000." },
     findings: {
       type: "array",
       items: {
@@ -41,8 +41,8 @@ const jsonSchema = {
         additionalProperties: false,
         required: ["title", "assessment", "severity", "orderIds"],
         properties: {
-          title: { type: "string" },
-          assessment: { type: "string" },
+          title: { type: "string", description: "Título de até 200 caracteres." },
+          assessment: { type: "string", description: "Avaliação objetiva, preferencialmente até 600 caracteres; limite de 2400." },
           severity: { type: "string", enum: ["low", "medium", "high"] },
           orderIds: { type: "array", items: { type: "integer" } },
         },
@@ -62,8 +62,11 @@ Distinga fatos registrados, relato do cliente, hipótese e informação insufici
 não prova da topologia ou conexão na data da OS. Status F significa finalizada, não comprova resolução técnica.
 Não afirme causa raiz ou incidente confirmado só por coincidência; recomende validações concretas.
 Use somente IDs de OS fornecidos como evidência. Cada achado exige de 1 a 30 IDs pertinentes.
-Produza até 10 achados, 8 ações e 8 limitações; respeite resumo de 6000 caracteres, títulos de 200,
-avaliações de 2400 e ações/limitações de 1000. Não invente denominadores, aumento histórico, dados ausentes ou monitoramento contínuo.`;
+Seja objetivo: prefira resumo de até 1800 caracteres, até 6 achados e avaliações de até 600 caracteres.
+Limites absolutos: 10 achados, 8 ações, 8 limitações, resumo de 6000 caracteres, títulos de 200,
+avaliações de 2400 e ações/limitações de 1000. Não invente denominadores, aumento histórico, dados ausentes ou monitoramento contínuo.
+Em requests com orders, revise somente o lote recebido: os totais do contexto são globais e não significam que você leu OS de outros lotes.
+Em requests com batchReports, consolide todos os relatórios fornecidos preservando suas evidências e limitações.`;
 
 /** Best-effort minimization of free text, complementing omission of structured identifying fields. */
 export function createOrderTextRedactor(names: string[] = []) {
@@ -104,8 +107,10 @@ export class OrderAiService {
       { instructions, input, schema: jsonSchema, name: "service_order_analysis", maxTokens: 6000 },
       signal
     );
-    const report = orderAiReport.parse(result);
-    if (report.findings.some((f) => f.orderIds.some((id) => !allowedIds.has(id)))) throw new Error("Evidência de IA inválida.");
+    const parsed = orderAiReport.safeParse(result);
+    if (!parsed.success) throw new AiGenerationError("INVALID_REPORT");
+    const report = parsed.data;
+    if (report.findings.some((f) => f.orderIds.some((id) => !allowedIds.has(id)))) throw new AiGenerationError("INVALID_EVIDENCE");
     return report;
   }
   async analyze(orders: OrderAiInput[], context: unknown, signal?: AbortSignal) {

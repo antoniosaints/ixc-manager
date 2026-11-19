@@ -1,14 +1,21 @@
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
+import axios from "axios";
 import { OrderAnalysisService, orderAnalysisQuery } from "../src/services/support/OrderAnalysisService.js";
 import { OrderAiService, redactOrderText, type OrderAiInput } from "../src/services/ai/OrderAiService.js";
 import { AiProviderClient } from "../src/services/ai/AiProviderClient.js";
 import { AiSettingsService } from "../src/services/settings/AiSettingsService.js";
-import { assertReadQuery, type IxcReadQuery, type IxcReadSession } from "../src/integrations/ixc/database/IxcReadDatabase.js";
+import {
+  IxcReadDatabase,
+  assertReadQuery,
+  type IxcReadQuery,
+  type IxcReadSession,
+} from "../src/integrations/ixc/database/IxcReadDatabase.js";
 import { supportRoutes } from "../src/controllers/supportController.js";
 import { AuthService } from "../src/services/AuthService.js";
 import { effectivePermissions } from "../src/config/permissions.js";
+import { OrderAnalysisHistoryRepository } from "../src/services/support/OrderAnalysisHistoryService.js";
 
 afterEach(() => vi.restoreAllMocks());
 const filters = { subjectId: 1, from: "2026-10-01", to: "2026-10-31" };
@@ -61,6 +68,108 @@ function fixture(ai = new OrderAiService(""), extra = 0) {
   return { db, select, reader, service: new OrderAnalysisService(reader, ai, () => new Date("2026-11-19T15:00:00Z")) };
 }
 describe("Análise de OS por assunto e período", () => {
+  it("processa 453 OS com Gemini, consolida todos os lotes e reabre o resumo salvo sem gerar novamente", async () => {
+    const f = fixture(undefined, 447);
+    f.db
+      .prepare("UPDATE su_oss_chamado SET mensagem=? WHERE id>=100")
+      .run("Queda de conexão relatada, com retorno após reiniciar o equipamento. ".repeat(8));
+    vi.spyOn(IxcReadDatabase.prototype, "withSnapshot").mockImplementation(async (read) => f.reader.withSnapshot(read));
+    vi.spyOn(AiSettingsService.prototype, "runtime").mockResolvedValue({
+      provider: "gemini",
+      model: "gemini-test",
+      key: "FAKE_GEMINI_KEY",
+    });
+    vi.spyOn(AuthService.prototype, "authenticate").mockResolvedValue({ id: 1, role: "ADMIN" } as never);
+    const insert = vi.spyOn(OrderAnalysisHistoryRepository.prototype, "insert").mockResolvedValue();
+    const collected: number[] = [];
+    let batches = 0,
+      consolidations = 0;
+    const post = vi.spyOn(axios, "post").mockImplementation(async (url, body: any, options) => {
+      expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-test:generateContent");
+      expect(options?.headers).toEqual({ "x-goog-api-key": "FAKE_GEMINI_KEY" });
+      const input = JSON.parse(body.contents[0].parts[0].text);
+      expect(input.context.totals.orders).toBe(453);
+      expect(JSON.stringify(body)).not.toMatch(/Maria Exemplo|José Exemplo|maria@example|senha: private/);
+      const ids: number[] = input.orders
+        ? input.orders.map((order: OrderAiInput) => order.id)
+        : input.batchReports.flatMap((r: ReturnType<typeof report>) => r.findings.flatMap((finding) => finding.orderIds));
+      if (input.orders) {
+        batches++;
+        collected.push(...ids);
+      } else consolidations++;
+      return {
+        data: {
+          candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(report([...new Set(ids)].slice(0, 10))) }] } }],
+        },
+      } as never;
+    });
+    const app = Fastify();
+    await app.register(supportRoutes, { prefix: "/api/support" });
+    try {
+      const response = await app.inject({ method: "POST", url: "/api/support/order-analysis", payload: filters });
+      expect(response.statusCode).toBe(200);
+      const data = response.json();
+      expect(data.ai).toMatchObject({
+        status: "completed",
+        provider: "gemini",
+        model: "gemini-test",
+        report: { summary: report().summary },
+      });
+      expect(data.totals.orders).toBe(453);
+      expect(new Set(collected)).toEqual(new Set(data.orders.map((order: { id: number }) => order.id)));
+      expect(collected).toHaveLength(453);
+      expect(batches).toBeGreaterThan(1);
+      expect(consolidations).toBeGreaterThan(1);
+      expect(data.ai.batches).toBe(batches);
+      expect(data.history.saved).toBe(true);
+      expect(insert).toHaveBeenCalledOnce();
+      const [id, snapshot, , createdAt] = insert.mock.calls[0]!;
+      expect(snapshot).toMatchObject({
+        filters,
+        subject: { id: 1 },
+        ai: { provider: "gemini", report: data.ai.report },
+        totals: { orders: 453 },
+      });
+      expect(JSON.stringify(snapshot)).not.toMatch(/FAKE_GEMINI_KEY|Maria Exemplo|customerName|messages/);
+      vi.spyOn(OrderAnalysisHistoryRepository.prototype, "detail").mockResolvedValue({ id, snapshot, createdAt: createdAt.toISOString() });
+      const previousCalls = post.mock.calls.length,
+        previousReads = f.select.mock.calls.length;
+      const saved = await app.inject({ url: `/api/support/order-analysis/history/${id}` });
+      expect(saved.statusCode).toBe(200);
+      expect(saved.json().snapshot.ai.report).toEqual(data.ai.report);
+      expect(post).toHaveBeenCalledTimes(previousCalls);
+      expect(f.select).toHaveBeenCalledTimes(previousReads);
+    } finally {
+      await app.close();
+      f.db.close();
+    }
+  });
+  it.each([
+    [{ candidates: [{ finishReason: "MAX_TOKENS" }] }, "limite de saída"],
+    [{ promptFeedback: { blockReason: "SAFETY" } }, "bloqueou"],
+    [{ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "PRIVATE_INVALID_JSON" }] } }] }, "JSON válido"],
+    [
+      {
+        candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify({ ...report(), summary: "x".repeat(6001) }) }] } }],
+      },
+      "campos ou limites",
+    ],
+    [{ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(report([999])) }] } }] }, "evidências fornecidas"],
+  ])("preserva as OS e identifica por que a geração do Gemini foi rejeitada (caso %#)", async (data, message) => {
+    const post = vi.fn().mockResolvedValue({ data });
+    const f = fixture(new OrderAiService("FAKE_KEY", "gemini-test", post, "gemini"));
+    try {
+      const result = await f.service.analyze(filters);
+      expect(result.ai).toMatchObject({ status: "failed", report: null });
+      expect(result.ai.message).toContain(message);
+      expect(result.ai.message).not.toMatch(/PRIVATE_INVALID_JSON|FAKE_KEY/);
+      expect(result.orders).toHaveLength(6);
+      expect(result.totals.orders).toBe(6);
+      expect(post).toHaveBeenCalledOnce();
+    } finally {
+      f.db.close();
+    }
+  });
   it("usa a configuração salva mais recente a cada nova análise, incluindo Gemini", async () => {
     const { db, reader } = fixture();
     const runtime = vi

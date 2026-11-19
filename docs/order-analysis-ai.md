@@ -2,6 +2,8 @@
 
 Em **Suporte → Análise de OS com IA**, escolha o assunto e as datas e clique em **Analisar ordens**. O período considera a abertura da OS no relógio do IXC/Brasília, inclui o último dia inteiro e todos os status. Relatórios concluídos por IA são salvos automaticamente no histórico da aplicação. Não há alteração no IXC.
 
+As tabelas de acompanhamento e evidências usam `compact-table`, com contagem e indicador de recorrência na mesma linha, nomes longos abreviados visualmente com título completo, datas e conexão sem quebra e paginação padrão de 10/25 registros. Em telas pequenas, a rolagem horizontal fica dentro de cada tabela. Nas evidências, **Ver mensagens** ou o número da OS abre descrição, resposta e histórico logo abaixo da linha; busca, filtro por cliente/achado e paginação continuam disponíveis. Trocar de página ou buscar recolhe a OS aberta.
+
 ## Histórico de análises
 
 Na aba **Histórico**, filtre por assunto e período analisado e clique em **Abrir resumo**. O acesso direto usa `/support/order-analysis?view=history&history=<uuid>`; essa tela consulta somente a base da aplicação, sem carregar assuntos do IXC nem fazer chamadas ao provedor de IA. O filtro de datas inclui análises cujo intervalo analisado está contido nas datas informadas. A paginação usa 10/25 registros; os assuntos vêm do próprio histórico, incluindo assuntos já removidos/renomeados no IXC.
@@ -84,6 +86,8 @@ O prompt trata mensagens como dados não confiáveis, exige distinguir fatos/rel
 
 Todos os lotes são revisados antes de consolidar o relatório. Históricos grandes são divididos sem contar partes da mesma OS como novas ocorrências. A consolidação é hierárquica para limitar o contexto. Falhas do provedor preservam os indicadores e evidências e mostram um aviso; nenhum texto calculado localmente é apresentado como resumo de IA.
 
+O prompt orienta relatórios objetivos por lote e distingue seus dados dos totais globais antes da consolidação. A análise identifica especificamente saída cortada por limite de tokens, conteúdo bloqueado, resposta incompleta, JSON inválido, campos/limites incorretos, referências de OS inexistentes e prazo excedido. Respostas rejeitadas não viram resumo concluído nem são salvas no histórico. Mensagens de erro não expõem o conteúdo bruto do provedor nem credenciais; a coleta de OS permanece disponível para consulta. A identificação de `MAX_TOKENS` segue a [referência do generateContent](https://aistudio.google.com/api-reference/generate-content), mantendo a validação local do JSON e das referências.
+
 ## Limites e operação
 
 - Até 366 dias, 5.000 OS, 50.000 mensagens e 12 milhões de caracteres de textos por consulta. Acima do limite, retorna erro pedindo um período menor, sem gerar relatório de uma amostra silenciosa.
@@ -97,6 +101,8 @@ Todos os lotes são revisados antes de consolidar o relatório. Históricos gran
 ## Validação
 
 `server/tests/OrderAnalysis.test.ts` cobre SQL em fixture relacional, limites inclusivos de datas e assunto, paginação de OS e histórico, vínculos incorretos e ramal ambíguo, contagem distinta de clientes/logins, dados ausentes, minimização do payload, falha do provedor, referências inventadas, consolidação em lotes, cancelamento e permissões HTTP. Chamadas de IA são simuladas nos testes, sem envio de dados reais ou consumo de tokens.
+
+O teste integrado de 453 OS passa pelo POST autenticado, configuração Gemini, coleta SQL em fixture, adaptador estruturado, múltiplos lotes, consolidação hierárquica e gravação do histórico. Confere que todas as OS foram processadas, sem duplicar/omitir IDs, e reabre o relatório salvo sem novas leituras IXC ou chamadas de IA. Os testes de falha distinguem limite de saída, bloqueio, JSON inválido, relatório fora dos limites e evidências inventadas. A revisão visual local usou dados fictícios em larguras de 1600 e 360 px, temas claro/escuro, nomes longos, filtros, busca, paginação e expansão por teclado; as linhas recolhidas ficaram em aproximadamente 37 px.
 
 `server/tests/AiSettings.test.ts` cobre criptografia e permissões do arquivo, reinicialização/concorrência/perda da chave mestra, cadastro e remoção de chaves separadas por provedor, manutenção de segredo ao editar modelo, substituição da configuração legada, teste sem persistência, geração Gemini com schema, evidências inválidas, instalação da tabela, conflitos de revisão, sanitização de falhas e autorização ADMIN. Também cobre listagem autenticada dos dois provedores, paginação Gemini, métodos de geração, deduplicação, IDs de modelos ajustados, listas vazias, cancelamento, ciclo/falha de paginação, seleção da chave correta e ausência de geração/escrita ao listar. A análise de OS também é testada consultando a configuração mais recente a cada chamada.
 

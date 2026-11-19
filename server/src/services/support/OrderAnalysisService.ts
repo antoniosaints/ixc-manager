@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AiSettingsService } from "../settings/AiSettingsService.js";
-import type { AiProvider } from "../ai/AiProviderClient.js";
+import { aiAnalysisFailure, type AiProvider } from "../ai/AiProviderClient.js";
 import { IxcReadDatabase, type IxcReadSession } from "../../integrations/ixc/database/IxcReadDatabase.js";
 import { mapDate } from "../../integrations/ixc/database/maps/valueMappers.js";
 import { compatibleOnuSql } from "../upgrades/LoginOnuLink.js";
@@ -330,13 +330,12 @@ export class OrderAnalysisService {
           aiSignal
         );
         ai = { status: "completed", ...result, message: null };
-      } catch {
+      } catch (error) {
         signal?.throwIfAborted();
         ai = {
           ...ai,
           status: "failed",
-          message:
-            "Não foi possível concluir o resumo por IA. Os dados foram preservados; tente analisar novamente ou reduza o período. Verifique a chave, o modelo e a disponibilidade do provedor.",
+          message: `${aiAnalysisFailure(error)} Os indicadores e as evidências coletadas foram preservados.`,
         };
       }
     }

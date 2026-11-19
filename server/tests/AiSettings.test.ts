@@ -474,7 +474,7 @@ describe("Gemini na análise de OS", () => {
     const ai = new OrderAiService("GEMINI_KEY", "gemini-test", post, "gemini");
     expect(await ai.analyze([order], {})).toMatchObject({ provider: "gemini", model: "gemini-test", report });
     post.mockResolvedValueOnce(gemini({ ...report, findings: [{ ...report.findings[0], orderIds: [999] }] }));
-    await expect(ai.analyze([order], {})).rejects.toThrow("Evidência");
+    await expect(ai.analyze([order], {})).rejects.toMatchObject({ code: "INVALID_EVIDENCE" });
     for (const data of [
       { data: { promptFeedback: { blockReason: "SAFETY" }, candidates: [] } },
       { data: { candidates: [{ finishReason: "MAX_TOKENS" }] } },

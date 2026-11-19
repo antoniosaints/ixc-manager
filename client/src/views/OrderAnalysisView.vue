@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Sparkles, Loader2, Search, Users, MapPin, Repeat2, Wrench, X, History, Save } from "lucide-vue-next";
+import { Sparkles, Loader2, Search, Users, MapPin, Repeat2, Wrench, X, History, Save, ChevronDown } from "lucide-vue-next";
+import LivePagination from "../components/LivePagination.vue";
 import OrderAnalysisHistory from "../components/OrderAnalysisHistory.vue";
 import SearchableSelect from "../components/SearchableSelect.vue";
 import SupportCaseStatus from "../components/SupportCaseStatus.vue";
@@ -34,6 +35,8 @@ const error = ref(""),
   result = ref<OrderAnalysis | null>(null);
 const page = ref(1),
   customerPage = ref(1),
+  orderLimit = ref(25),
+  customerLimit = ref(10),
   selectedIds = ref<number[] | null>(null),
   evidenceLabel = ref("");
 const search = ref(""),
@@ -54,7 +57,7 @@ const filteredOrders = computed(() => {
       (!term || `${o.id} ${o.customerName ?? ""} ${o.city ?? ""} ${o.networkBranch ?? ""}`.toLocaleLowerCase("pt-BR").includes(term))
   );
 });
-const orders = computed(() => filteredOrders.value.slice((page.value - 1) * 20, page.value * 20));
+const orders = computed(() => filteredOrders.value.slice((page.value - 1) * orderLimit.value, page.value * orderLimit.value));
 const customers = computed(() => (result.value?.customers ?? []).filter((c) => !recurringOnly.value || c.recurring));
 const clusters = computed(() =>
   (result.value?.clusters ?? []).filter((c) => (clusterScope.value === "branch" ? !!c.networkBranch : !c.networkBranch))
@@ -66,6 +69,9 @@ watch([search, selectedIds], () => {
 });
 watch(recurringOnly, () => {
   customerPage.value = 1;
+});
+watch([page, orderLimit], () => {
+  expanded.value = null;
 });
 watch(clusterScope, () => {
   clusterPage.value = 1;
@@ -418,50 +424,60 @@ onBeforeUnmount(() => {
           </section>
 
           <section class="panel overflow-hidden" aria-labelledby="analysis-customers-title">
-            <div class="flex flex-wrap items-center justify-between gap-3 p-5">
+            <div class="flex flex-wrap items-center justify-between gap-2 p-3">
               <div>
                 <h2 id="analysis-customers-title" class="font-semibold">Acompanhamento dos clientes</h2>
                 <p class="mt-1 text-xs text-slate-500">
                   Conexão atual apenas dos logins vinculados às OS. Atualize a análise para consultar novamente.
                 </p>
               </div>
-              <label class="flex items-center gap-2 text-sm"><input v-model="recurringOnly" type="checkbox" />Somente recorrentes</label>
+              <label class="flex items-center gap-2 text-xs"><input v-model="recurringOnly" type="checkbox" />Somente recorrentes</label>
             </div>
-            <div class="overflow-x-auto">
-              <table class="w-full text-left text-sm">
-                <thead class="bg-slate-50 text-xs text-slate-500">
+            <div class="overflow-x-auto" role="region" aria-labelledby="analysis-customers-title" tabindex="0">
+              <table class="compact-table min-w-[900px] whitespace-nowrap">
+                <thead>
                   <tr>
-                    <th scope="col" class="px-5 py-3">Cliente</th>
-                    <th scope="col" class="px-5 py-3">OS no período</th>
-                    <th scope="col" class="px-5 py-3">Última abertura</th>
-                    <th scope="col" class="px-5 py-3">Logins vinculados agora</th>
-                    <th scope="col" class="px-5 py-3">Evidências</th>
+                    <th scope="col">Cliente</th>
+                    <th scope="col">OS no período</th>
+                    <th scope="col">Última abertura</th>
+                    <th scope="col">Logins vinculados agora</th>
+                    <th scope="col" class="w-px">Evidências</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
-                  <tr v-for="customer in customers.slice((customerPage - 1) * 10, customerPage * 10)" :key="customer.id">
-                    <td class="px-5 py-3">
+                  <tr
+                    v-for="customer in customers.slice((customerPage - 1) * customerLimit, customerPage * customerLimit)"
+                    :key="customer.id"
+                    class="hover:bg-slate-50"
+                  >
+                    <td>
                       <RouterLink
                         v-if="auth.can('support.customer.view')"
                         :to="`/support/customers/${customer.id}`"
-                        class="font-medium text-indigo-600 underline"
+                        class="block max-w-[22rem] truncate font-medium text-indigo-600 underline"
+                        :title="customer.name ?? `Cliente #${customer.id}`"
                         >{{ customer.name ?? `Cliente #${customer.id}` }}</RouterLink
-                      ><span v-else>{{ customer.name ?? `Cliente #${customer.id}` }}</span>
+                      ><span v-else class="block max-w-[22rem] truncate" :title="customer.name ?? `Cliente #${customer.id}`">{{
+                        customer.name ?? `Cliente #${customer.id}`
+                      }}</span>
                     </td>
-                    <td class="px-5 py-3">
-                      {{ customer.total }}<span v-if="customer.recurring" class="mt-1 block text-xs text-amber-800">Recorrente</span>
+                    <td>
+                      <span class="inline-flex items-center gap-2 tabular-nums"
+                        >{{ customer.total }}<span v-if="customer.recurring" class="pill bg-amber-50 text-amber-800">Recorrente</span></span
+                      >
                     </td>
-                    <td class="whitespace-nowrap px-5 py-3">{{ formatIxcDateTime(customer.lastOpenedAt) }}</td>
-                    <td class="px-5 py-3 text-xs">
+                    <td class="tabular-nums">{{ formatIxcDateTime(customer.lastOpenedAt) }}</td>
+                    <td>
                       <template v-if="customer.linkedLogins"
                         >{{ customer.online }} online · {{ customer.offline }} offline · {{ customer.unknownConnection }} sem
                         informação</template
                       ><span v-else class="text-slate-500">Sem login confirmado</span>
                     </td>
-                    <td class="px-5 py-3">
+                    <td>
                       <button
                         type="button"
-                        class="button-secondary !px-3 !py-1.5"
+                        class="button-secondary !h-6 !min-h-6 !px-2 !py-0"
+                        :aria-label="`Ver OS de ${customer.name ?? `Cliente #${customer.id}`}`"
                         @click="showEvidence(customer.orderIds, customer.name ?? `Cliente #${customer.id}`)"
                       >
                         Ver OS
@@ -474,103 +490,125 @@ onBeforeUnmount(() => {
                 </tbody>
               </table>
             </div>
-            <div v-if="customers.length > 10" class="flex items-center justify-end gap-3 p-3 text-sm">
-              <button type="button" class="button-secondary" :disabled="customerPage === 1" @click="customerPage--">Anterior</button
-              ><span>{{ customerPage }} / {{ Math.ceil(customers.length / 10) }}</span
-              ><button type="button" class="button-secondary" :disabled="customerPage * 10 >= customers.length" @click="customerPage++">
-                Próxima
-              </button>
-            </div>
+            <LivePagination
+              v-model:page="customerPage"
+              v-model:limit="customerLimit"
+              :total="customers.length"
+              :queried-at="result.queriedAt"
+            />
           </section>
 
-          <section id="analysis-evidence" class="panel scroll-mt-4 p-5" aria-labelledby="analysis-evidence-title">
-            <div class="flex flex-wrap items-center justify-between gap-3">
+          <section id="analysis-evidence" class="panel scroll-mt-4 overflow-hidden" aria-labelledby="analysis-evidence-title">
+            <div class="flex flex-wrap items-center justify-between gap-2 p-3">
               <h2 id="analysis-evidence-title" class="font-semibold">Ordens e mensagens de evidência</h2>
               <label class="flex items-center gap-2 text-sm"
                 ><Search class="h-4 w-4" aria-hidden="true" /><span class="sr-only">Buscar OS por ID, cliente, cidade ou ramal</span
-                ><input v-model="search" class="input" placeholder="Buscar nas OS coletadas" type="search"
+                ><input v-model="search" class="input !h-8 !min-h-8 w-56 max-w-full" placeholder="Buscar nas OS coletadas" type="search"
               /></label>
             </div>
-            <div v-if="selectedIds" class="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <div v-if="selectedIds" class="flex flex-wrap items-center gap-2 px-3 pb-2 text-xs">
               <span>Filtro: {{ evidenceLabel }}</span
               ><button type="button" class="button-secondary !py-1" @click="selectedIds = null">Mostrar todas</button>
             </div>
-            <p class="my-3 text-xs text-slate-500">
-              {{ filteredOrders.length }} OS · clique em uma ordem para revisar descrição, resposta e histórico.
+            <p class="px-3 pb-3 text-xs text-slate-500">
+              {{ filteredOrders.length }} OS · abra as mensagens para revisar descrição, resposta e histórico.
             </p>
-            <div class="divide-y divide-slate-200">
-              <article v-for="order in orders" :key="order.id" class="py-3">
-                <button
-                  type="button"
-                  class="flex w-full flex-wrap items-center justify-between gap-3 rounded-lg p-2 text-left hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500"
-                  :aria-expanded="expanded === order.id"
-                  :aria-controls="`order-evidence-${order.id}`"
-                  @click="expanded = expanded === order.id ? null : order.id"
-                >
-                  <span
-                    ><strong>OS #{{ order.id }}</strong> · {{ order.customerName ?? "Cliente não localizado"
-                    }}<span class="mt-1 block text-xs text-slate-500"
-                      >{{ order.city ?? "Cidade não informada" }} · Ramal {{ order.networkBranch ?? "não confirmado" }} ·
-                      {{ formatIxcDateTime(order.openedAt) }}</span
-                    ></span
-                  ><span class="flex items-center gap-3"
-                    ><SupportCaseStatus :status="order.status" kind="orders" /><span class="text-xs text-indigo-600">{{
-                      expanded === order.id ? "Recolher" : "Ver mensagens"
-                    }}</span></span
-                  >
-                </button>
-                <div
-                  v-if="expanded === order.id"
-                  :id="`order-evidence-${order.id}`"
-                  class="mt-3 space-y-4 rounded-lg bg-slate-50 p-4 text-sm"
-                >
-                  <p v-if="order.truncated" class="text-xs text-amber-800">Há textos abreviados a 6.000 caracteres nesta OS.</p>
-                  <div>
-                    <h3 class="font-semibold">Descrição</h3>
-                    <p class="mt-1 whitespace-pre-wrap break-words">{{ order.message ?? "Não informada." }}</p>
-                  </div>
-                  <div>
-                    <h3 class="font-semibold">Resposta / execução</h3>
-                    <p class="mt-1 whitespace-pre-wrap break-words">{{ order.response ?? "Não informada." }}</p>
-                  </div>
-                  <div>
-                    <h3 class="font-semibold">Histórico de mensagens ({{ order.messages.length }})</h3>
-                    <ol class="mt-2 space-y-3">
-                      <li v-for="(message, i) in order.messages" :key="i" class="border-l-2 border-slate-300 pl-3">
-                        <time class="text-xs text-slate-500">{{ formatIxcDateTime(message.date) }}</time>
-                        <p class="mt-1 whitespace-pre-wrap break-words">{{ message.body ?? "Sem texto." }}</p>
-                      </li>
-                    </ol>
-                    <p v-if="!order.messages.length" class="mt-1 text-slate-500">Nenhuma mensagem de histórico.</p>
-                  </div>
-                </div>
-              </article>
+            <div class="overflow-x-auto" role="region" aria-labelledby="analysis-evidence-title" tabindex="0">
+              <table class="compact-table min-w-[1080px] whitespace-nowrap">
+                <thead>
+                  <tr>
+                    <th scope="col">OS</th>
+                    <th scope="col">Cliente</th>
+                    <th scope="col">Cidade</th>
+                    <th scope="col">Ramal</th>
+                    <th scope="col">Abertura</th>
+                    <th scope="col">Status</th>
+                    <th scope="col" class="w-px">Mensagens</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <template v-for="order in orders" :key="order.id">
+                    <tr class="hover:bg-slate-50" :class="expanded === order.id ? 'bg-slate-50' : ''">
+                      <td>
+                        <button
+                          type="button"
+                          class="min-h-6 font-semibold text-indigo-600 hover:underline"
+                          :aria-expanded="expanded === order.id"
+                          :aria-controls="`order-evidence-${order.id}`"
+                          :aria-label="`Abrir ou recolher mensagens da OS #${order.id}`"
+                          @click="expanded = expanded === order.id ? null : order.id"
+                        >
+                          #{{ order.id }}
+                        </button>
+                      </td>
+                      <td>
+                        <span class="block max-w-[22rem] truncate" :title="order.customerName ?? 'Cliente não localizado'">{{
+                          order.customerName ?? "Cliente não localizado"
+                        }}</span>
+                      </td>
+                      <td>
+                        <span class="block max-w-[12rem] truncate" :title="order.city ?? 'Cidade não informada'">{{
+                          order.city ?? "Cidade não informada"
+                        }}</span>
+                      </td>
+                      <td>{{ order.networkBranch ?? "Não confirmado" }}</td>
+                      <td class="tabular-nums">{{ formatIxcDateTime(order.openedAt) }}</td>
+                      <td><SupportCaseStatus :status="order.status" kind="orders" /></td>
+                      <td>
+                        <button
+                          type="button"
+                          class="button-secondary !h-6 !min-h-6 !px-2 !py-0"
+                          :aria-expanded="expanded === order.id"
+                          :aria-controls="`order-evidence-${order.id}`"
+                          :aria-label="`${expanded === order.id ? 'Recolher' : 'Ver'} mensagens da OS #${order.id}`"
+                          @click="expanded = expanded === order.id ? null : order.id"
+                        >
+                          {{ expanded === order.id ? "Recolher" : "Ver mensagens"
+                          }}<span v-if="order.messages.length" class="tabular-nums text-slate-500">({{ order.messages.length }})</span
+                          ><ChevronDown class="h-3 w-3" :class="expanded === order.id ? 'rotate-180' : ''" aria-hidden="true" />
+                        </button>
+                      </td>
+                    </tr>
+                    <tr v-if="expanded === order.id">
+                      <td colspan="7" class="!p-0 whitespace-normal">
+                        <div
+                          :id="`order-evidence-${order.id}`"
+                          role="region"
+                          :aria-label="`Descrição, resposta e histórico da OS #${order.id}`"
+                          class="space-y-3 bg-slate-50 p-3 text-xs leading-5"
+                        >
+                          <p v-if="order.truncated" class="text-xs text-amber-800">Há textos abreviados a 6.000 caracteres nesta OS.</p>
+                          <div class="grid gap-3 md:grid-cols-2">
+                            <div class="min-w-0">
+                              <h3 class="font-semibold">Descrição</h3>
+                              <p class="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{{ order.message ?? "Não informada." }}</p>
+                            </div>
+                            <div class="min-w-0">
+                              <h3 class="font-semibold">Resposta / execução</h3>
+                              <p class="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{{ order.response ?? "Não informada." }}</p>
+                            </div>
+                          </div>
+                          <div>
+                            <h3 class="font-semibold">Histórico de mensagens ({{ order.messages.length }})</h3>
+                            <ol class="mt-2 max-h-80 space-y-2 overflow-y-auto">
+                              <li v-for="(message, i) in order.messages" :key="i" class="border-l-2 border-slate-300 pl-3">
+                                <time class="text-xs text-slate-500">{{ formatIxcDateTime(message.date) }}</time>
+                                <p class="whitespace-pre-wrap [overflow-wrap:anywhere]">{{ message.body ?? "Sem texto." }}</p>
+                              </li>
+                            </ol>
+                            <p v-if="!order.messages.length" class="mt-1 text-slate-500">Nenhuma mensagem de histórico.</p>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                  <tr v-if="!orders.length">
+                    <td colspan="7" class="!py-5 text-center text-slate-500">Nenhuma OS para esta busca.</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-            <p v-if="!orders.length" class="py-5 text-center text-sm text-slate-500">Nenhuma OS para esta busca.</p>
-            <div v-if="filteredOrders.length > 20" class="mt-3 flex flex-wrap items-center justify-end gap-3 text-sm">
-              <button
-                type="button"
-                class="button-secondary"
-                :disabled="page === 1"
-                @click="
-                  page--;
-                  expanded = null;
-                "
-              >
-                Anterior</button
-              ><span>{{ page }} / {{ Math.ceil(filteredOrders.length / 20) }}</span
-              ><button
-                type="button"
-                class="button-secondary"
-                :disabled="page * 20 >= filteredOrders.length"
-                @click="
-                  page++;
-                  expanded = null;
-                "
-              >
-                Próxima
-              </button>
-            </div>
+            <LivePagination v-model:page="page" v-model:limit="orderLimit" :total="filteredOrders.length" :queried-at="result.queriedAt" />
           </section>
         </template>
       </template>

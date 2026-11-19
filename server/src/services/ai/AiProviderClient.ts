@@ -25,6 +25,11 @@ export interface AiGeneration {
   name: string;
   maxTokens: number;
 }
+export class AiGenerationError extends Error {
+  constructor(readonly code: "OUTPUT_LIMIT" | "BLOCKED" | "INCOMPLETE" | "INVALID_JSON" | "INVALID_REPORT" | "INVALID_EVIDENCE") {
+    super(code);
+  }
+}
 function geminiLegacySchema(schema: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const key of ["type", "description", "enum", "required", "nullable", "format"])
@@ -170,8 +175,11 @@ export class AiProviderClient {
         candidates?: { finishReason?: string; content?: { parts?: { text?: string; thought?: boolean }[] } }[];
       };
       const candidate = data.candidates?.[0];
-      if (data.promptFeedback?.blockReason || !candidate || candidate.finishReason !== "STOP")
-        throw new Error("Resposta de IA incompleta ou bloqueada.");
+      if (data.promptFeedback?.blockReason) throw new AiGenerationError("BLOCKED");
+      if (candidate?.finishReason === "MAX_TOKENS") throw new AiGenerationError("OUTPUT_LIMIT");
+      if (candidate?.finishReason && ["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII"].includes(candidate.finishReason))
+        throw new AiGenerationError("BLOCKED");
+      if (!candidate || candidate.finishReason !== "STOP") throw new AiGenerationError("INCOMPLETE");
       raw =
         candidate.content?.parts
           ?.filter((p) => !p.thought)
@@ -190,17 +198,26 @@ export class AiProviderClient {
         },
         { ...common, headers: { Authorization: `Bearer ${configuration.key}` } }
       );
-      const data = response.data as { status?: string; output?: { type: string; content?: { type: string; text?: string }[] }[] };
-      if (data.status !== "completed") throw new Error("Resposta de IA incompleta.");
+      const data = response.data as {
+        status?: string;
+        incomplete_details?: { reason?: string };
+        output?: { type: string; content?: { type: string; text?: string }[] }[];
+      };
+      if (data.incomplete_details?.reason === "max_output_tokens") throw new AiGenerationError("OUTPUT_LIMIT");
+      if (data.status !== "completed") throw new AiGenerationError("INCOMPLETE");
       const content = data.output?.filter((o) => o.type === "message").flatMap((o) => o.content ?? []);
-      if (content?.some((c) => c.type === "refusal")) throw new Error("Análise não disponibilizada.");
+      if (content?.some((c) => c.type === "refusal")) throw new AiGenerationError("BLOCKED");
       raw =
         content
           ?.filter((c) => c.type === "output_text")
           .map((c) => c.text ?? "")
           .join("") ?? "";
     }
-    return JSON.parse(raw);
+    try {
+      return JSON.parse(raw);
+    } catch {
+      throw new AiGenerationError("INVALID_JSON");
+    }
   }
 }
 
@@ -328,4 +345,29 @@ export function aiConnectionFailure(error: unknown) {
       ? "A API recusou o formato de JSON estruturado mesmo após a tentativa de compatibilidade. Escolha outro modelo e teste novamente."
       : "O provedor recusou a requisição do teste. Confira a chave e o acesso ao modelo selecionado.";
   return "Não foi possível validar a geração de JSON com este modelo. Confira o modelo, a conexão e a disponibilidade do provedor.";
+}
+
+export function aiAnalysisFailure(error: unknown) {
+  if (error instanceof AiGenerationError) {
+    return {
+      OUTPUT_LIMIT:
+        "O provedor atingiu o limite de saída antes de concluir o resumo. Reduza o período ou escolha um modelo com maior capacidade de saída.",
+      BLOCKED: "O provedor bloqueou a geração deste conteúdo. Revise os textos das OS ou teste outro modelo compatível.",
+      INCOMPLETE: "O provedor devolveu uma resposta incompleta. Tente novamente ou reduza o período.",
+      INVALID_JSON: "O modelo não devolveu JSON válido. Teste a conexão em Configurações e escolha um modelo compatível com a análise.",
+      INVALID_REPORT: "O resumo devolvido não respeitou os campos ou limites exigidos. Reduza o período ou teste outro modelo.",
+      INVALID_EVIDENCE:
+        "O resumo citou OS que não pertencem às evidências fornecidas e foi rejeitado. Tente novamente ou escolha outro modelo.",
+    }[error.code];
+  }
+  if (
+    (error instanceof Error && /AbortError|TimeoutError/.test(error.name)) ||
+    (axios.isAxiosError(error) && ["ERR_CANCELED", "ECONNABORTED", "ETIMEDOUT"].includes(error.code ?? ""))
+  )
+    return "O tempo limite da revisão por IA foi atingido. Reduza o período para processar menos lotes por análise.";
+  if (axios.isAxiosError(error))
+    return aiConnectionFailure(error)
+      .replace("do teste", "da análise")
+      .replace("validar a geração de JSON", "concluir a geração do resumo");
+  return "Não foi possível concluir o resumo por IA. Tente novamente ou reduza o período. Confira o modelo e a disponibilidade do provedor.";
 }
