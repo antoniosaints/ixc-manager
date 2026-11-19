@@ -18,6 +18,7 @@ export interface AnalysisOrder {
   messages: { date: string | null; body: string | null }[];
 }
 export interface OrderAnalysis {
+  history?: HistorySave | null;
   filters: { subjectId: number; from: string; to: string };
   subject: { id: number; name: string };
   queriedAt: string;
@@ -62,6 +63,35 @@ export interface OrderAnalysis {
     } | null;
   };
 }
+export interface HistorySave {
+  id: string;
+  saved: boolean;
+  createdAt: string;
+  message: string | null;
+}
+export type OrderAnalysisSnapshot = Pick<OrderAnalysis, "filters" | "subject" | "queriedAt" | "messageCount" | "warnings"> & {
+  totals: OrderAnalysis["totals"] & { cities: number };
+  ai: Pick<OrderAnalysis["ai"], "model" | "provider" | "batches"> & { report: NonNullable<OrderAnalysis["ai"]["report"]> };
+};
+export interface OrderAnalysisHistoryEntry {
+  id: string;
+  subject: OrderAnalysis["subject"];
+  filters: OrderAnalysis["filters"];
+  createdAt: string;
+  generatedAt: string;
+  provider: string;
+  model: string;
+  totalOrders: number;
+  summary: string;
+}
+export interface OrderAnalysisHistoryPage {
+  items: OrderAnalysisHistoryEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  queriedAt: string;
+  subjects: { id: number; name: string }[];
+}
 async function request<T>(path: string, signal?: AbortSignal, body?: unknown): Promise<T> {
   const token = localStorage.getItem("retencao-cas.auth-token");
   const response = await apiFetch(`/api/support/order-analysis${path}`, {
@@ -78,6 +108,10 @@ async function request<T>(path: string, signal?: AbortSignal, body?: unknown): P
   return response.json();
 }
 export const orderAnalysisApi = {
+  history: (query: URLSearchParams, signal?: AbortSignal) => request<OrderAnalysisHistoryPage>(`/history?${query}`, signal),
+  saved: (id: string, signal?: AbortSignal) =>
+    request<{ id: string; createdAt: string; snapshot: OrderAnalysisSnapshot }>(`/history/${encodeURIComponent(id)}`, signal),
+  retryHistory: (id: string, signal?: AbortSignal) => request<HistorySave>(`/history/${encodeURIComponent(id)}/retry`, signal, {}),
   subjects: (signal?: AbortSignal) =>
     request<{ subjects: { id: number; name: string }[]; configured: boolean; model: string; provider: "openai" | "gemini" }>(
       "/subjects",

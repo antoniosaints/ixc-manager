@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { Sparkles, Save, PlugZap, Loader2, ShieldCheck } from "lucide-vue-next";
+import { Sparkles, Save, PlugZap, Loader2, ShieldCheck, RefreshCw } from "lucide-vue-next";
+import SearchableSelect from "../components/SearchableSelect.vue";
 import { settingsApi, type AiProvider, type AiSettings, type AiSettingsDraft, type AiConnectionTest } from "../settingsApi";
 import { queryErrorMessage } from "../queryErrorMessage";
 import { toast } from "../notifications/toast";
@@ -16,14 +17,23 @@ const loading = ref(true),
   error = ref(""),
   testResult = ref<AiConnectionTest | null>(null);
 const labels = { openai: "OpenAI", gemini: "Google Gemini" };
+const providerOptions = [
+  { value: "openai", label: "OpenAI" },
+  { value: "gemini", label: "Google Gemini API" },
+];
 const current = computed(() => settings.value?.providers[provider.value]);
-const options = computed(() => [
-  ...new Set([...(settings.value?.modelSuggestions[provider.value] ?? []), ...(current.value?.model ? [current.value.model] : [])]),
-]);
+const models = ref<{ id: string; name: string }[]>([]),
+  modelsLoading = ref(false),
+  modelsError = ref(""),
+  modelsLoaded = ref(false);
+const options = computed(() =>
+  models.value.map((item) => ({ value: item.id, label: item.id, ...(item.name !== item.id ? { description: item.name } : {}) }))
+);
+const modelMissing = computed(() => modelsLoaded.value && !!model.value && !models.value.some((item) => item.id === model.value));
 const busy = computed(() => loading.value || saving.value || testing.value);
 const valid = computed(
   () =>
-    /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,119}$/.test(model.value.trim().replace(/^models\//, "")) &&
+    /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,199}$/.test(model.value.trim().replace(/^models\//, "")) &&
     (!apiKey.value || !/\s/.test(apiKey.value.trim()))
 );
 const dirty = computed(
@@ -33,6 +43,30 @@ const dirty = computed(
 );
 const canTest = computed(() => valid.value && !removeKey.value && (!!apiKey.value.trim() || current.value?.configured));
 let controller: AbortController | undefined;
+let modelsController: AbortController | undefined;
+async function loadModels() {
+  modelsController?.abort();
+  const active = (modelsController = new AbortController()),
+    selectedProvider = provider.value;
+  models.value = [];
+  modelsError.value = "";
+  modelsLoaded.value = false;
+  modelsLoading.value = false;
+  if (!settings.value?.providers[selectedProvider].configured) return;
+  modelsLoading.value = true;
+  try {
+    const data = await settingsApi.aiModels(selectedProvider, active.signal);
+    if (active.signal.aborted || provider.value !== selectedProvider || modelsController !== active) return;
+    if (data.provider !== selectedProvider)
+      throw new Error("A lista de modelos não corresponde ao provedor selecionado. Atualize a lista.");
+    models.value = data.models;
+    modelsLoaded.value = true;
+  } catch (e) {
+    if (!active.signal.aborted && modelsController === active) modelsError.value = queryErrorMessage(e);
+  } finally {
+    if (modelsController === active) modelsLoading.value = false;
+  }
+}
 function resetForm() {
   model.value = current.value?.model ?? "";
   apiKey.value = "";
@@ -43,6 +77,7 @@ watch(provider, () => {
   resetForm();
   error.value = "";
 });
+watch([provider, settings], loadModels);
 watch([model, apiKey, removeKey], () => {
   testResult.value = null;
 });
@@ -106,22 +141,23 @@ async function test() {
 onMounted(load);
 onBeforeUnmount(() => {
   controller?.abort();
+  modelsController?.abort();
   apiKey.value = "";
 });
 </script>
 <template>
-  <section class="panel max-w-4xl p-5" aria-labelledby="ai-settings-title" :aria-busy="busy">
+  <section class="panel p-4" aria-labelledby="ai-settings-title" :aria-busy="busy">
     <header class="mb-5">
-      <h2 id="ai-settings-title" class="flex items-center gap-2 text-lg font-bold">
-        <Sparkles class="h-5 w-5 text-indigo-600" aria-hidden="true" />Inteligência artificial
+      <h2 id="ai-settings-title" class="flex items-center gap-2 text-sm font-bold">
+        <Sparkles class="h-4 w-4 text-indigo-600" aria-hidden="true" />Inteligência artificial
       </h2>
-      <p class="mt-2 text-sm text-slate-500">
+      <p class="mt-1 text-xs text-slate-500">
         Configure o provedor usado para revisar ordens de serviço, mensagens e recorrências. As alterações salvas valem na próxima análise.
       </p>
     </header>
     <p v-if="loading" role="status" class="py-6 text-sm text-slate-500">Carregando configurações de IA…</p>
     <form v-else-if="settings" class="space-y-5" @submit.prevent="save">
-      <div class="rounded-lg bg-slate-50 p-3 text-sm">
+      <div class="rounded-lg bg-slate-50 p-3 text-xs">
         <strong>Provedor ativo:</strong> {{ labels[settings.provider] }} · {{ settings.providers[settings.provider].model
         }}<span class="mt-1 block text-xs text-slate-500">{{
           settings.providers[settings.provider].configured ? "Chave configurada." : "Cadastre uma chave para habilitar o resumo por IA."
@@ -129,31 +165,50 @@ onBeforeUnmount(() => {
       </div>
       <fieldset class="grid gap-4 sm:grid-cols-2" :disabled="busy">
         <legend class="sr-only">Provedor e modelo de IA</legend>
-        <label class="block text-sm font-medium"
-          >Provedor<select v-model="provider" class="input mt-1">
-            <option value="openai">OpenAI</option>
-            <option value="gemini">Google Gemini API</option>
-          </select></label
-        >
-        <label class="block text-sm font-medium"
-          >Modelo<input
-            v-model="model"
-            list="ai-model-options"
-            class="input mt-1"
-            required
-            maxlength="127"
-            autocomplete="off"
-            spellcheck="false"
-            aria-describedby="ai-model-hint" /><datalist id="ai-model-options">
-            <option v-for="option in options" :key="option" :value="option" /></datalist
-        ></label>
+        <SearchableSelect
+          :model-value="provider"
+          :options="providerOptions"
+          label="Provedor"
+          :disabled="busy"
+          @update:model-value="provider = $event as AiProvider"
+        />
+        <SearchableSelect
+          :model-value="model"
+          :options="options"
+          label="Modelo"
+          :placeholder="model || 'Selecione um modelo'"
+          :loading="modelsLoading"
+          :disabled="busy || modelsLoading || !models.length"
+          empty-message="Nenhum modelo encontrado."
+          @update:model-value="model = String($event)"
+        />
       </fieldset>
-      <p id="ai-model-hint" class="!mt-2 text-xs text-slate-500">
-        Escolha uma sugestão ou digite o identificador de outro modelo disponível na sua conta. O teste verifica o suporte à geração de JSON
-        exigida pela análise.
+      <div class="!mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+        <p v-if="modelsLoading" role="status">Carregando modelos da API de {{ labels[provider] }}…</p>
+        <p v-else-if="!current?.configured">Cadastre e salve a chave deste provedor para carregar os modelos automaticamente.</p>
+        <p v-else-if="modelsLoaded" role="status">{{ models.length }} modelo(s) retornado(s) pela API de {{ labels[provider] }}.</p>
+        <button
+          v-if="current?.configured"
+          type="button"
+          class="button-secondary !px-3 !py-1.5"
+          :disabled="busy || modelsLoading"
+          @click="loadModels"
+        >
+          <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" />Atualizar modelos
+        </button>
+      </div>
+      <p v-if="modelsError" role="alert" class="text-sm text-red-700">{{ modelsError }}</p>
+      <p v-if="modelMissing" class="text-xs text-amber-800">
+        O modelo atual ({{ model }}) não apareceu na lista retornada. Ele foi preservado; escolha outro modelo ou teste a conexão.
+      </p>
+      <p v-if="apiKey.trim()" class="text-xs text-slate-500">
+        A lista usa a chave já salva. Salve a nova chave para atualizar os modelos disponíveis.
+      </p>
+      <p class="text-xs text-slate-500">
+        A listagem não confirma suporte ao JSON exigido pela análise. Use Testar conexão para validar o modelo escolhido.
       </p>
       <fieldset :disabled="busy" class="space-y-3">
-        <legend class="mb-2 text-sm font-semibold">Chave da API · {{ labels[provider] }}</legend>
+        <legend class="mb-2 text-xs font-bold">Chave da API · {{ labels[provider] }}</legend>
         <p v-if="current?.configured" class="text-xs text-slate-500">
           {{
             current.keySource === "environment"
@@ -161,12 +216,12 @@ onBeforeUnmount(() => {
               : "Existe uma chave cadastrada para este provedor. Deixe o campo vazio para mantê-la."
           }}
         </p>
-        <label class="block text-sm font-medium"
+        <label class="block text-xs text-slate-500"
           >{{ current?.configured ? "Nova chave da API (opcional)" : "Chave da API"
           }}<input
             v-model="apiKey"
             type="password"
-            class="input mt-1"
+            class="input mt-1 !h-8 !min-h-8"
             :disabled="removeKey"
             maxlength="4096"
             autocomplete="off"
@@ -178,7 +233,7 @@ onBeforeUnmount(() => {
         <p id="ai-key-hint" class="text-xs text-slate-500">
           Cada provedor mantém sua própria chave. Após salvar, a chave não é devolvida ao navegador.
         </p>
-        <label v-if="current?.configured" class="flex items-center gap-2 text-sm"
+        <label v-if="current?.configured" class="flex items-center gap-2 text-xs"
           ><input v-model="removeKey" type="checkbox" @change="apiKey = ''" />Remover a chave deste provedor ao salvar</label
         >
       </fieldset>
@@ -187,13 +242,13 @@ onBeforeUnmount(() => {
       </p>
       <p v-if="!valid" class="text-sm text-red-700" role="alert">Informe um identificador de modelo válido e uma chave sem espaços.</p>
       <div class="flex flex-wrap gap-3">
-        <button type="button" class="button-secondary min-h-11" :disabled="busy || !canTest" @click="test">
+        <button type="button" class="button-secondary" :disabled="busy || !canTest" @click="test">
           <Loader2 v-if="testing" class="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /><PlugZap
             v-else
             class="h-4 w-4"
             aria-hidden="true"
           />{{ testing ? "Testando conexão…" : "Testar conexão" }}</button
-        ><button type="submit" class="button-primary min-h-11" :disabled="busy || !valid || !dirty">
+        ><button type="submit" class="button-primary" :disabled="busy || !valid || !dirty">
           <Save class="h-4 w-4" aria-hidden="true" />{{ saving ? "Salvando…" : "Salvar e usar este provedor" }}
         </button>
       </div>

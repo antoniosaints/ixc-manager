@@ -12,6 +12,7 @@ import { SupportOrdersService, supportOrdersQuery } from "../services/support/Su
 import { SupportContractsService, supportContractsQuery } from "../services/support/SupportContractsService.js";
 import { CustomerGraphService } from "../services/support/CustomerGraphService.js";
 import { OrderAnalysisService, orderAnalysisQuery } from "../services/support/OrderAnalysisService.js";
+import { OrderAnalysisHistoryService, orderAnalysisHistoryQuery, historyId } from "../services/support/OrderAnalysisHistoryService.js";
 
 const pagination = z.object({
   ...columnSortFields,
@@ -37,6 +38,7 @@ export async function supportRoutes(app: FastifyInstance) {
   const orderFiles = new SupportOrderFilesService();
   const orders = new SupportOrdersService();
   const orderAnalysis = new OrderAnalysisService();
+  const analysisHistory = new OrderAnalysisHistoryService();
   app.addHook("onClose", () => orderAnalysis.close());
   const contracts = new SupportContractsService();
   const graph = new CustomerGraphService();
@@ -53,7 +55,7 @@ export async function supportRoutes(app: FastifyInstance) {
   app.addHook("preHandler", async (request) => {
     await auth.requireUser(request);
   });
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error, request, reply) => {
     const details = error as { statusCode?: number; message?: string };
     const status =
       error instanceof z.ZodError
@@ -66,7 +68,9 @@ export async function supportRoutes(app: FastifyInstance) {
         error instanceof z.ZodError
           ? "Revise os filtros informados."
           : status === 502
-            ? "Não foi possível consultar o IXC agora. Tente atualizar a consulta."
+            ? request.routeOptions.url?.includes("/order-analysis/history")
+              ? "Não foi possível acessar o histórico salvo. Tente novamente."
+              : "Não foi possível consultar o IXC agora. Tente atualizar a consulta."
             : details.message,
     });
   });
@@ -88,7 +92,7 @@ export async function supportRoutes(app: FastifyInstance) {
     }
   });
   app.post("/order-analysis", options, async (request, reply) => {
-    await auth.requirePermission(request, "support.orders.view", "support.orders.analyze");
+    const user = await auth.requirePermission(request, "support.orders.view", "support.orders.analyze");
     const query = orderAnalysisQuery.parse(request.body);
     const controller = new AbortController();
     const disconnected = () => {
@@ -96,10 +100,23 @@ export async function supportRoutes(app: FastifyInstance) {
     };
     reply.raw.on("close", disconnected);
     try {
-      return await orderAnalysis.analyze(query, controller.signal);
+      const result = await orderAnalysis.analyze(query, controller.signal);
+      return { ...result, history: await analysisHistory.capture(result, user.id) };
     } finally {
       reply.raw.off("close", disconnected);
     }
+  });
+  app.get("/order-analysis/history", options, async (request) => {
+    await auth.requirePermission(request, "support.orders.view", "support.orders.analyze");
+    return analysisHistory.list(orderAnalysisHistoryQuery.parse(request.query));
+  });
+  app.get("/order-analysis/history/:historyId", options, async (request) => {
+    await auth.requirePermission(request, "support.orders.view", "support.orders.analyze");
+    return analysisHistory.detail(historyId.parse(request.params).historyId);
+  });
+  app.post("/order-analysis/history/:historyId/retry", options, async (request) => {
+    const user = await auth.requirePermission(request, "support.orders.view", "support.orders.analyze");
+    return analysisHistory.retry(historyId.parse(request.params).historyId, user.id);
   });
   for (const path of ["/contracts", "/contracts/filters"] as const) {
     app.get(path, options, async (request, reply) => {

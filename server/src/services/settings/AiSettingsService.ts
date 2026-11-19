@@ -4,12 +4,13 @@ import { env } from "../../config/env.js";
 import {
   AiProviderClient,
   aiConnectionFailure,
+  aiModelsFailure,
   aiModel,
   aiProvider,
   type AiConfiguration,
   type AiProvider,
 } from "../ai/AiProviderClient.js";
-import { AiSecretVault } from "../ai/AiSecretVault.js";
+import { AiSecretVault, AiSecretUnavailableError } from "../ai/AiSecretVault.js";
 
 const entry = z
   .object({ model: aiModel, keySource: z.enum(["saved", "environment", "none"]), encryptedKey: z.string().nullable() })
@@ -32,10 +33,7 @@ export const aiSettingsDraft = z
   });
 export const aiSettingsSave = z.object({ revision: z.number().int().nonnegative().safe(), configuration: aiSettingsDraft }).strict();
 const fail = (message: string, statusCode = 400) => Object.assign(new Error(message), { statusCode });
-export const modelSuggestions = {
-  openai: ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"],
-  gemini: ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"],
-};
+export const aiModelsQuery = z.object({ provider: aiProvider }).strict();
 export interface AiSettingsStore {
   read(): Promise<{ configuration: Stored; revision: number } | null>;
   write(configuration: Stored, revision: number, userId: number): Promise<void>;
@@ -100,7 +98,7 @@ export class AiSettingsService {
       provider: "openai",
       providers: {
         openai: { model: env.OPENAI_MODEL, keySource: env.OPENAI_API_KEY ? "environment" : "none", encryptedKey: null },
-        gemini: { model: modelSuggestions.gemini[0]!, keySource: "none", encryptedKey: null },
+        gemini: { model: "gemini-3.5-flash-lite", keySource: "none", encryptedKey: null },
       },
     };
   }
@@ -118,7 +116,6 @@ export class AiSettingsService {
       provider: configuration.provider,
       revision,
       providers: { openai: state("openai"), gemini: state("gemini") },
-      modelSuggestions,
     };
   }
   async get() {
@@ -135,7 +132,18 @@ export class AiSettingsService {
   }
   private async key(configuration: Stored, provider: AiProvider) {
     const value = configuration.providers[provider];
-    if (value.keySource === "saved" && value.encryptedKey) return this.vault.decrypt(value.encryptedKey, provider);
+    if (value.keySource === "saved" && value.encryptedKey) {
+      try {
+        return await this.vault.decrypt(value.encryptedKey, provider);
+      } catch (error) {
+        if (error instanceof AiSecretUnavailableError)
+          throw fail(
+            "A proteção da chave cadastrada não está disponível neste servidor. Restaure o volume de segredos ou cadastre novamente a chave da API.",
+            409
+          );
+        throw error;
+      }
+    }
     return value.keySource === "environment" && provider === "openai" ? (env.OPENAI_API_KEY ?? null) : null;
   }
   async runtime(): Promise<AiConfiguration> {
@@ -145,6 +153,20 @@ export class AiSettingsService {
       model: configuration.providers[configuration.provider].model,
       key: await this.key(configuration, configuration.provider),
     };
+  }
+  async models(input: unknown, signal?: AbortSignal) {
+    const { provider } = aiModelsQuery.parse(input);
+    const { configuration } = await this.read();
+    const key = await this.key(configuration, provider);
+    if (!key) throw fail("Cadastre e salve uma chave para este provedor para carregar os modelos.");
+    try {
+      const deadline = AbortSignal.timeout(45000);
+      const models = await this.client.models({ provider, key }, signal ? AbortSignal.any([signal, deadline]) : deadline);
+      return { provider, models };
+    } catch (error) {
+      signal?.throwIfAborted();
+      throw fail(aiModelsFailure(error), 422);
+    }
   }
   async save(input: unknown, userId: number) {
     const { revision, configuration: draft } = aiSettingsSave.parse(input);

@@ -46,9 +46,10 @@ async function fixture() {
     }),
   };
   const post = vi.fn().mockResolvedValue(gemini()),
+    get = vi.fn(),
     vault = new AiSecretVault(directory);
-  const service = new AiSettingsService(store, vault, new AiProviderClient(post));
-  return { service, store, post, vault, directory, stored: () => structuredClone(stored) };
+  const service = new AiSettingsService(store, vault, new AiProviderClient(post, get));
+  return { service, store, post, get, vault, directory, stored: () => structuredClone(stored) };
 }
 describe("Chaves de IA protegidas", () => {
   it("criptografa com nonce único, persiste entre instâncias e vincula o segredo ao provedor", async () => {
@@ -119,7 +120,9 @@ describe("Cadastro de IA pela aplicação", () => {
     const [url, body, options] = f.post.mock.calls[0]!;
     expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-test:generateContent");
     expect(url).not.toContain("key-gemini-private");
-    expect(body).toMatchObject({ generationConfig: { responseMimeType: "application/json", responseJsonSchema: { required: ["ok"] } } });
+    expect(body).toMatchObject({
+      generationConfig: { responseFormat: { text: { mimeType: "APPLICATION_JSON", schema: { required: ["ok"] } } } },
+    });
     expect(options.headers).toEqual({ "x-goog-api-key": "key-gemini-private" });
     expect(JSON.stringify(body)).not.toContain("key-gemini-private");
     await f.service.save({ revision: 0, configuration: draft("openai", "ONLY_OPENAI_KEY") }, 1);
@@ -162,6 +165,144 @@ describe("Cadastro de IA pela aplicação", () => {
       expect(aiConnectionFailure({ isAxiosError: true, response: { status }, message: "PRIVATE" })).not.toContain("PRIVATE");
   });
 });
+describe("Modelos retornados pelos provedores", () => {
+  it("carrega OpenAI com autenticação no header, remove duplicados e retorna somente identificação", async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: { data: [{ id: "gpt-z", owned_by: "PRIVATE" }, { id: "ft:gpt-test:org::123" }, { id: "gpt-a" }, { id: "gpt-a" }] },
+    });
+    const client = new AiProviderClient(vi.fn(), get);
+    expect(await client.models({ provider: "openai", key: "PRIVATE_KEY" })).toEqual([
+      { id: "ft:gpt-test:org::123", name: "ft:gpt-test:org::123" },
+      { id: "gpt-a", name: "gpt-a" },
+      { id: "gpt-z", name: "gpt-z" },
+    ]);
+    expect(get).toHaveBeenCalledOnce();
+    expect(get.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/models");
+    expect(get.mock.calls[0]?.[1]).toMatchObject({ headers: { Authorization: "Bearer PRIVATE_KEY" }, maxRedirects: 0 });
+  });
+  it("percorre todas as páginas do Gemini e seleciona modelos com generateContent", async () => {
+    const get = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: {
+          models: [
+            { name: "models/gemini-z", displayName: "Gemini Z", supportedGenerationMethods: ["generateContent"] },
+            { name: "models/embedding", supportedGenerationMethods: ["embedContent"] },
+          ],
+          nextPageToken: "next+/=",
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          models: [
+            { name: "models/gemini-a", displayName: "Gemini A", supportedGenerationMethods: ["generateContent"] },
+            { name: "models/gemini-z", displayName: "Gemini Z", supportedGenerationMethods: ["generateContent"] },
+          ],
+        },
+      });
+    expect(await new AiProviderClient(vi.fn(), get).models({ provider: "gemini", key: "GEMINI_PRIVATE" })).toEqual([
+      { id: "gemini-a", name: "Gemini A" },
+      { id: "gemini-z", name: "Gemini Z" },
+    ]);
+    expect(get).toHaveBeenCalledTimes(2);
+    for (const [url, options] of get.mock.calls) {
+      expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models");
+      expect(url).not.toContain("GEMINI_PRIVATE");
+      expect(options.headers).toEqual({ "x-goog-api-key": "GEMINI_PRIVATE" });
+    }
+    expect(get.mock.calls[1]?.[1].params).toEqual({ pageSize: 1000, pageToken: "next+/=" });
+  });
+  it("não devolve listas parciais quando há erro ou ciclo na paginação", async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: { models: [{ name: "models/gemini-x", supportedGenerationMethods: ["generateContent"] }], nextPageToken: "same" },
+    });
+    await expect(new AiProviderClient(vi.fn(), get).models({ provider: "gemini", key: "KEY" })).rejects.toThrow("Paginação");
+    expect(get).toHaveBeenCalledTimes(2);
+    const broken = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { models: [], nextPageToken: "next" } })
+      .mockRejectedValueOnce(new Error("PRIVATE"));
+    await expect(new AiProviderClient(vi.fn(), broken).models({ provider: "gemini", key: "KEY" })).rejects.toThrow();
+    const malformed = vi.fn().mockResolvedValue({ data: { data: [{ id: "../invalid" }] } });
+    await expect(new AiProviderClient(vi.fn(), malformed).models({ provider: "openai", key: "KEY" })).rejects.toThrow();
+  });
+  it("trata lista vazia e interrompe paginação ao cancelar", async () => {
+    const empty = vi.fn().mockResolvedValue({ data: { data: [] } });
+    expect(await new AiProviderClient(vi.fn(), empty).models({ provider: "openai", key: "KEY" })).toEqual([]);
+    const controller = new AbortController();
+    const get = vi.fn().mockImplementation(async () => {
+      controller.abort();
+      return { data: { models: [], nextPageToken: "next" } };
+    });
+    await expect(new AiProviderClient(vi.fn(), get).models({ provider: "gemini", key: "KEY" }, controller.signal)).rejects.toThrow();
+    expect(get).toHaveBeenCalledOnce();
+  });
+  it("usa a chave salva do provedor selecionado mesmo quando outro está ativo, sem gerar texto ou salvar", async () => {
+    const f = await fixture();
+    await expect(f.service.models({ provider: "gemini" })).rejects.toMatchObject({ statusCode: 400 });
+    expect(f.get).not.toHaveBeenCalled();
+    await f.service.save({ revision: 0, configuration: draft("openai", "OPENAI_SAVED") }, 1);
+    await expect(f.service.models({ provider: "gemini" })).rejects.toMatchObject({ statusCode: 400 });
+    await f.service.save({ revision: 1, configuration: draft("gemini", "GEMINI_SAVED") }, 1);
+    f.get.mockResolvedValueOnce({ data: { data: [{ id: "gpt-live" }] } });
+    const result = await f.service.models({ provider: "openai" });
+    expect(result).toEqual({ provider: "openai", models: [{ id: "gpt-live", name: "gpt-live" }] });
+    expect(f.get.mock.calls[0]?.[1].headers).toEqual({ Authorization: "Bearer OPENAI_SAVED" });
+    expect(f.stored()?.configuration.provider).toBe("gemini");
+    expect(f.store.write).toHaveBeenCalledTimes(2);
+    expect(f.post).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain("OPENAI_SAVED");
+  });
+  it("sanitiza falha de listagem e rejeita chave ou provedor enviados na consulta", async () => {
+    const f = await fixture();
+    await f.service.save({ revision: 0, configuration: draft() }, 1);
+    f.get.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: { status: 403, data: "PRIVATE_BODY" },
+      config: { headers: { "x-goog-api-key": "PRIVATE_KEY" } },
+    });
+    try {
+      await f.service.models({ provider: "gemini" });
+      throw new Error("Expected failure");
+    } catch (error) {
+      expect(error).toMatchObject({ statusCode: 422 });
+      expect((error as Error).message).toContain("permissão");
+      expect((error as Error).message).not.toContain("PRIVATE");
+    }
+    for (const input of [{ provider: "other" }, { provider: "gemini", apiKey: "UNSAVED_KEY" }])
+      await expect(f.service.models(input)).rejects.toThrow();
+    expect(f.get).toHaveBeenCalledOnce();
+  });
+  it("protege o GET administrativo e não vaza chaves na resposta ou nas falhas", async () => {
+    const auth = vi.spyOn(AuthService.prototype, "authenticate").mockResolvedValue(null);
+    const models = vi
+      .spyOn(AiSettingsService.prototype, "models")
+      .mockResolvedValue({ provider: "gemini", models: [{ id: "gemini-live", name: "Gemini Live" }] });
+    const app = Fastify();
+    await app.register(settingsRoutes, { prefix: "/api/settings" });
+    const url = "/api/settings/ai/models?provider=gemini";
+    try {
+      expect((await app.inject({ url })).statusCode).toBe(401);
+      auth.mockResolvedValue({ id: 1, role: "OPERATOR", permissions: ["support.orders.analyze"] } as never);
+      expect((await app.inject({ url })).statusCode).toBe(403);
+      expect(models).not.toHaveBeenCalled();
+      auth.mockResolvedValue({ id: 1, role: "ADMIN" } as never);
+      for (const query of ["provider=other", "provider=gemini&apiKey=PRIVATE"])
+        expect((await app.inject({ url: `/api/settings/ai/models?${query}` })).statusCode).toBe(400);
+      expect(models).not.toHaveBeenCalled();
+      const response = await app.inject({ url });
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["cache-control"]).toBe("no-store");
+      expect(response.json()).toEqual({ provider: "gemini", models: [{ id: "gemini-live", name: "Gemini Live" }] });
+      expect(models).toHaveBeenCalledWith({ provider: "gemini" }, expect.any(AbortSignal));
+      models.mockRejectedValueOnce(new Error("PRIVATE_KEY"));
+      expect((await app.inject({ url })).body).not.toContain("PRIVATE_KEY");
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe("Persistência de configuração de IA", () => {
   it("lê instalação antiga sem criar tabela e cria apenas na primeira gravação explícita", async () => {
     const f = await fixture();
@@ -221,6 +362,55 @@ describe("Gemini na análise de OS", () => {
     ]) {
       post.mockResolvedValueOnce(data);
       await expect(ai.analyze([order], {})).rejects.toThrow();
+    }
+  });
+  it("faz uma única adaptação de schema para versões antigas, mantendo a validação estruturada", async () => {
+    const post = vi
+      .fn()
+      .mockRejectedValueOnce({
+        isAxiosError: true,
+        response: {
+          status: 400,
+          data: { error: { message: 'Invalid JSON payload. Unknown name "responseFormat" at generation_config.' } },
+        },
+      })
+      .mockResolvedValueOnce(gemini({ ok: true }));
+    const client = new AiProviderClient(post);
+    const result = await client.generate(
+      { provider: "gemini", model: "gemini-test", key: "PRIVATE_KEY" },
+      {
+        instructions: "Teste",
+        input: "Confirme",
+        schema: { type: "object", additionalProperties: false, properties: { ok: { type: "boolean" } }, required: ["ok"] },
+        name: "test",
+        maxTokens: 100,
+      }
+    );
+    expect(result).toEqual({ ok: true });
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post.mock.calls[1]?.[1].generationConfig).toEqual({
+      responseMimeType: "application/json",
+      responseSchema: { type: "OBJECT", properties: { ok: { type: "BOOLEAN" } }, required: ["ok"] },
+      maxOutputTokens: 100,
+    });
+    expect(post.mock.calls[1]?.[1].generationConfig).not.toHaveProperty("responseFormat");
+  });
+  it("não repete recusas de chave ou cota e informa chave inválida inclusive em HTTP 400", async () => {
+    for (const status of [400, 401, 429]) {
+      const error = {
+        isAxiosError: true,
+        response: { status, data: { error: { message: "API key not valid", details: [{ reason: "API_KEY_INVALID" }] } } },
+      };
+      const post = vi.fn().mockRejectedValue(error);
+      await expect(
+        new AiProviderClient(post).generate(
+          { provider: "gemini", model: "gemini-test", key: "PRIVATE_KEY" },
+          { instructions: "Teste", input: "OK", schema: {}, name: "test", maxTokens: 100 }
+        )
+      ).rejects.toBe(error);
+      expect(post).toHaveBeenCalledOnce();
+      expect(aiConnectionFailure(error)).toContain("chave");
+      expect(aiConnectionFailure(error)).not.toContain("PRIVATE_KEY");
     }
   });
 });

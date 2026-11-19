@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile, link, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+export class AiSecretUnavailableError extends Error {}
 
 export class AiSecretVault {
   constructor(private readonly directory = fileURLToPath(new URL("../../../data/ai-secrets/", import.meta.url))) {}
@@ -13,7 +14,7 @@ export class AiSecretVault {
       return key;
     } catch (error) {
       if (!create || (error as { code?: string }).code !== "ENOENT")
-        throw new Error("Chave de proteção indisponível. Restaure o volume de segredos do backend.");
+        throw new AiSecretUnavailableError("Chave de proteção indisponível. Restaure o volume de segredos do backend.");
     }
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     const temporary = resolve(this.directory, `.master-${randomBytes(12).toString("hex")}.tmp`);

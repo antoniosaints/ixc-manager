@@ -5,7 +5,10 @@ export interface AiSettings {
   provider: AiProvider;
   revision: number;
   providers: Record<AiProvider, { model: string; keySource: "saved" | "environment" | "none"; configured: boolean }>;
-  modelSuggestions: Record<AiProvider, string[]>;
+}
+export interface AiModelsResponse {
+  provider: AiProvider;
+  models: { id: string; name: string }[];
 }
 export interface AiSettingsDraft {
   provider: AiProvider;
@@ -122,6 +125,8 @@ async function request<T>(path: string, method = "GET", body?: unknown, signal?:
 }
 export const settingsApi = {
   ai: (signal?: AbortSignal) => request<AiSettings>("/ai", "GET", undefined, signal),
+  aiModels: (provider: AiProvider, signal?: AbortSignal) =>
+    request<AiModelsResponse>(`/ai/models?provider=${encodeURIComponent(provider)}`, "GET", undefined, signal),
   saveAi: (value: { revision: number; configuration: AiSettingsDraft }, signal?: AbortSignal) =>
     request<AiSettings>("/ai", "PUT", value, signal),
   testAi: (value: AiSettingsDraft, signal?: AbortSignal) => request<AiConnectionTest>("/ai/test", "POST", value, signal),
