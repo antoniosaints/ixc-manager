@@ -17,8 +17,18 @@ import { loginToolsRoutes } from "./controllers/loginToolsController.js";
 import { raffleRoutes } from "./controllers/raffleController.js";
 
 import { providerAnalyticsRoutes } from "./controllers/providerAnalyticsController.js";
+import { runStartupMigrations } from "./database/startupMigrations.js";
+import { db } from "./repositories/database.js";
 
 const app = Fastify({ logger: true });
+try {
+  const installed = await runStartupMigrations();
+  app.log.info({ migrations: installed }, "Banco da aplicação preparado automaticamente.");
+} catch (error) {
+  app.log.fatal((error as Error).message);
+  await db.end();
+  process.exit(1);
+}
 app.addHook("onClose", () => directRetention.close());
 await app.register(cors, corsOptions(env.CORS_ORIGIN));
 await app.register(websocket, { options: { maxPayload: 4096 } });

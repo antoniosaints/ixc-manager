@@ -159,9 +159,11 @@ describe("OpenAI e Gemini com a nova proteção", () => {
     expect(JSON.stringify(settings)).not.toMatch(/FAKE_GEMINI_KEY|FAKE_OPENAI_KEY/);
     await expect(stat(join(f.directory, "master.key"))).rejects.toMatchObject({ code: "ENOENT" });
   });
-  it("sinaliza credencial legada irrecuperável e permite recadastro pela interface", async () => {
+  it("permite recadastrar as duas chaves após perder o arquivo antigo, preservando o outro provedor a cada gravação", async () => {
     const f = await fixture();
-    const encrypted = await new AiSecretVault(f.directory).encrypt("FAKE_OLD", "gemini");
+    const legacy = new AiSecretVault(f.directory);
+    const encrypted = await legacy.encrypt("FAKE_OLD", "gemini");
+    const oldOpenai = await legacy.encrypt("FAKE_OLD_OPENAI", "openai");
     await rm(join(f.directory, "master.key"));
     let settings = {
       revision: 1,
@@ -169,7 +171,7 @@ describe("OpenAI e Gemini com a nova proteção", () => {
         provider: "gemini" as const,
         providers: {
           gemini: { model: "gemini-test", keySource: "saved" as const, encryptedKey: encrypted },
-          openai: { model: "gpt-test", keySource: "none" as const, encryptedKey: null },
+          openai: { model: "gpt-test", keySource: "saved" as const, encryptedKey: oldOpenai },
         },
       },
     };
@@ -181,6 +183,7 @@ describe("OpenAI e Gemini com a nova proteção", () => {
     };
     const service = new AiSettingsService(store, f.vault());
     expect((await service.get()).providers.gemini.protectionError).toContain("proteção");
+    expect((await service.get()).providers.openai.protectionError).toContain("proteção");
     expect((await service.status()).configured).toBe(false);
     expect((await service.runtime()).key).toBeNull();
     await expect(service.test({ provider: "gemini", model: "gemini-test", keyAction: "keep", apiKey: "" })).rejects.toMatchObject({
@@ -191,7 +194,24 @@ describe("OpenAI e Gemini com a nova proteção", () => {
       1
     );
     expect(saved.providers.gemini.protectionError).toBeNull();
+    expect(saved.providers.openai.protectionError).toContain("proteção");
+    expect(settings.configuration.providers.openai.encryptedKey).toBe(oldOpenai);
     expect((await service.runtime()).key).toBe("FAKE_REPLACEMENT");
+    const preservedGemini = settings.configuration.providers.gemini.encryptedKey;
+    const restarted = new AiSettingsService(store, f.vault());
+    const both = await restarted.save(
+      { revision: 2, configuration: { provider: "openai", model: "gpt-test", keyAction: "replace", apiKey: "FAKE_NEW_OPENAI" } },
+      1
+    );
+    expect(both.providers.gemini.protectionError).toBeNull();
+    expect(both.providers.openai.protectionError).toBeNull();
+    expect(settings.configuration.providers.gemini.encryptedKey).toBe(preservedGemini);
+    const finalVault = f.vault();
+    expect(await finalVault.decrypt(settings.configuration.providers.gemini.encryptedKey, "gemini")).toBe("FAKE_REPLACEMENT");
+    expect(await finalVault.decrypt(settings.configuration.providers.openai.encryptedKey, "openai")).toBe("FAKE_NEW_OPENAI");
+    expect((await new AiSettingsService(store, f.vault()).runtime()).key).toBe("FAKE_NEW_OPENAI");
+    expect(JSON.stringify(settings)).not.toMatch(/FAKE_REPLACEMENT|FAKE_NEW_OPENAI/);
+    await expect(stat(join(f.directory, "master.key"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
 describe("Tabela da proteção persistente", () => {

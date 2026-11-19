@@ -101,7 +101,7 @@ Validação real em 07/10/2026: API e MySQL coincidiram nos títulos e contratos
 
 ## Executar
 
-1. Crie o banco MySQL e aplique, em ordem, todos os arquivos de `server/migrations/`.
+1. Em uma instalação nova, crie o banco MySQL e aplique a estrutura inicial `001` a `019` de `server/migrations/`. As migrações de IA `020` a `022` são executadas automaticamente ao iniciar o backend; instalações existentes não precisam executar SQL para essa atualização.
 2. Copie `.env.example` para `.env` e preencha as credenciais do IXC, MySQL e Redis. Em Redis gerenciado, informe também `REDIS_PASSWORD` (e `REDIS_USERNAME`, normalmente `default`).
 3. Instale as dependências com `npm run install:all` e execute `npm run dev`.
 
@@ -116,6 +116,8 @@ Para acessar pela rede interna, abra `http://<IP-local-do-computador>:5173` em o
 Use `npm run build` (ou `build:all`) para compilar os dois workspaces. Os comandos `npm run build:backend` e `npm run build:frontend` compilam cada um separadamente. Os scripts de instalação incluem as dependências de desenvolvimento necessárias ao build, mesmo quando `NODE_ENV=production`.
 
 Em desenvolvimento, `npm run dev` usa Vite na porta 5173 com proxy `/api` e WebSocket para a porta `PORT` do backend (3000 por padrão), lida do ambiente/`.env`. Em produção, **`npm start`** inicia o Fastify em `0.0.0.0:PORT` e serve o `client/dist` compilado junto da API. `npm run start:backend` é um alias para o mesmo processo; sem `client/dist`, ele continua disponível apenas como API. `FRONTEND_DIST` permite apontar para outro diretório compilado, como `/var/www/dist`.
+
+As tabelas de configurações de IA, histórico de análises de OS e proteção das chaves são instaladas automaticamente antes de abrir a porta HTTP (`020` a `022`). O build inclui os arquivos SQL em `server/dist/migration-sql`. O controle de versões e um bloqueio por base permitem reinícios e múltiplos contêineres sem apagar dados nem repetir migrações concluídas. A conta de `DATABASE_URL` precisa de CREATE, SELECT e INSERT na base da aplicação; em caso de falha, o processo encerra com orientação no log e tenta novamente no próximo início. No Easypanel, basta publicar o build atualizado e manter `npm start`, sem comando SQL ou tarefa manual de migração. Após o deploy, recadastre OpenAI e Gemini em **Configurações → Inteligência artificial**, selecionando e salvando cada provedor separadamente.
 
 Configure `VITE_BACKEND_URL` no `.env` da **raiz** ou no ambiente de build do frontend para informar a URL pública do backend:
 

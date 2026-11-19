@@ -155,6 +155,7 @@ onBeforeUnmount(() => {
       </h2>
       <p class="mt-1 text-xs text-slate-500">
         Configure o provedor usado para revisar ordens de serviço, mensagens e recorrências. As alterações salvas valem na próxima análise.
+        Para cadastrar ou substituir as duas chaves, selecione e salve cada provedor separadamente.
       </p>
     </header>
     <p v-if="loading" role="status" class="py-6 text-sm text-slate-500">Carregando configurações de IA…</p>
@@ -224,11 +225,18 @@ onBeforeUnmount(() => {
           {{
             current.keySource === "environment"
               ? "Existe uma chave herdada da configuração anterior. Você pode substituí-la por uma chave cadastrada aqui."
-              : "Existe uma chave cadastrada para este provedor. Deixe o campo vazio para mantê-la."
+              : current.protectionError
+                ? "A chave anterior não está disponível. Cole novamente a chave deste provedor e salve para substituir o cadastro."
+                : "Existe uma chave cadastrada para este provedor. Deixe o campo vazio para mantê-la."
           }}
         </p>
         <label class="block text-xs text-slate-500"
-          >{{ current?.configured ? "Nova chave da API (opcional)" : "Chave da API"
+          >{{
+            current?.protectionError
+              ? "Cadastrar novamente a chave da API"
+              : current?.configured
+                ? "Nova chave da API (opcional)"
+                : "Chave da API"
           }}<input
             v-model="apiKey"
             type="password"
@@ -238,7 +246,9 @@ onBeforeUnmount(() => {
             autocomplete="off"
             autocapitalize="off"
             spellcheck="false"
-            :placeholder="current?.configured ? 'Chave existente protegida' : 'Cole a chave do provedor selecionado'"
+            :placeholder="
+              current?.configured && !current.protectionError ? 'Chave existente protegida' : 'Cole a chave do provedor selecionado'
+            "
             aria-describedby="ai-key-hint"
         /></label>
         <p id="ai-key-hint" class="text-xs text-slate-500">
